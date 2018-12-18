@@ -11,6 +11,7 @@ class GethNode():
     '''
     Data structure for Geth-pbft client.
     '''
+        #n = GethNode(IPlist, 0, 1, 121)
     def __init__(self, IPlist, pbftid, nodeindex, blockchainid, passwd='Blockchain17'):
         self.Enode = ''
         self._id = nodeindex
@@ -38,10 +39,11 @@ class GethNode():
         try:
             stdin, stdout, stderr = ssh.exec_command(RUN_DOCKER)
             err = stderr.read().strip()
-            if not err:
-#                print(stdout.read().strip().decode(encoding='utf-8'))
-                print('node %s of blockchain %s at %s:%s started' % (self._nodeindex, self._blockchainid, self._ip, self._listenerPort))
+            out = stdout.read().strip()
 
+            if not err and out:
+#                print(stdout.read().strip().decode(encoding='utf-8'))
+                print('node %s of blockchain %s at %s:%s started' % (self._nodeindex, self._blockchainid, self._ip, self._rpcPort))
                 sleep(3)
                 msg = self.__msg("admin_nodeInfo", [])
                 url = "http://{}:{}".format(self._ip, self._rpcPort)
@@ -49,10 +51,11 @@ class GethNode():
                     response = requests.post(url, headers=self._headers, data=msg)
                     enode = json.loads(response.content.decode(encoding='utf-8'))['result']['enode'].split('@')[0]
                     self.Enode = '{}@{}:{}'.format(enode, self._ip, self._listenerPort)
+                    print(self.Enode)
                 except Exception as e:
                     print("getEnode", e)
             else:
-                print('%s@%s' % (self._ip, self._listenerPort), stderr, "start step")
+                print('%s@%s' % (self._ip, self._listenerPort), err, "start step")
             # result = stdout.read()
             # print(result)
         except Exception as e:
@@ -213,7 +216,8 @@ class GethNode():
         msg = self.__msg("admin_addPeer", param)
         url = "http://{}:{}".format(self._ip, self._rpcPort)
         try:
-            requests.post(url, headers=self._headers, data=msg)
+            info = requests.post(url, headers=self._headers, data=msg)
+            print(info.json())
             sleep(0.5)
             # print(response.content)
         except Exception as e:
@@ -364,3 +368,4 @@ if __name__ == "__main__":
     print(n.newAccount(passwd))
     print(n.getAccounts())
     n.stop()
+    stopAll(n._ip)

@@ -5,15 +5,17 @@ from singlechain import SingleChain
 from ips import IPList
 import threading
 import time
+import gethnode
 
 class HIBEChain():
     '''
     Data structure for a Hierarchical IBE Chain.
-    '''
+    ''' 
+    #xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     def __init__(self, IDList, threshList, IPlist, passwd='Blockchain17'):
 
         # Check if the input params are legal
-        if not len(IDList) == len(threshList) <=  IPlist.getFullCount():
+        if not len(IDList) == len(threshList):
             raise ValueError("length of IDList should match length of threshList")
         if sum(nodeCount for (nodeCount, _) in threshList) > IPlist.getFullCount():
             raise ValueError("not enough IPs")
@@ -46,7 +48,7 @@ class HIBEChain():
         for chain in self._chains[::-1]:
             if chain.getID() != '':
                 parentChain = self._chains[self._IDList.index(chain.getID()[:-1])]
-                print(chain.getID(), parentChain.getID())
+                # print(chain.getID(), parentChain.getID())
                 # parentChain.connectLowerChain(chain)
                 t = threading.Thread(target=parentChain.connectLowerChain,args=(chain,))
                 t.start()
@@ -127,9 +129,9 @@ if __name__ == "__main__":
     startTime = time.time()
     hibe = HIBEChain(IDList, threshList, IPlist)
     hibe.constructHIBEChain()
-    hibe.setNumber()
-    hibe.setLevel()
-    hibe.setID()
+    hibe.setNumber()#门限
+    hibe.setLevel()#层次
+    hibe.setID()#id
     endTime = time.time()
 
     a, b, c, d = hibe.getChain(''), hibe.getChain('1'), hibe.getChain('11'), hibe.getChain("12")
@@ -139,7 +141,6 @@ if __name__ == "__main__":
     dp1 = d.getPrimer()
     print(ap1.getPeerCount(), bp1.getPeerCount(), cp1.getPeerCount(), dp1.getPeerCount()) # 4 7 2 2
 
-
     a1 = cp1.newAccount()
     a2 = dp1.newAccount()
     cp1.unlockAccount(a1)
@@ -147,5 +148,4 @@ if __name__ == "__main__":
 
     time.sleep(2)
     hibe.destructHIBEChain()
-
     print("HIBEChain construction time:", endTime - startTime)

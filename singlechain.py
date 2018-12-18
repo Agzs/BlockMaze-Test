@@ -11,7 +11,7 @@ class SingleChain():
     '''
     Data structure for a set of Geth-pbft clients for a single blockchain.
     '''
-
+    #c = SingleChain('1', 1, nodeNum, nodeNum*3//4, 121, IPlist)
     def __init__(self, name, level, nodeCount, threshold, blockchainid, IPlist, passwd='Blockchain17'):
         '''
         init a set of geth-pbft nodes for one blockchain.
@@ -85,7 +85,8 @@ class SingleChain():
 #            threadlist.append(t)
 #        for t in threadlist:
 #            t.join()
-        for i in tqdm(range(len(self._nodes))):
+#        sleep(2)
+        for i in range(len(self._nodes)):
             for j in range(len(self._nodes)):
                 tmpEnode = self._nodes[j].getEnode()
                 self._nodes[i].addPeer(tmpEnode, 0)
@@ -144,7 +145,7 @@ class SingleChain():
             self._ifSetNumber = True
         else:
             raise RuntimeError("number of chain %s already set" % self._id)
-
+    #xxqxqxqxxxxxxxxxxxxxxxxxxxx
     def setLevel(self, maxLevel):
         '''
         Set level info for each node.
@@ -161,7 +162,6 @@ class SingleChain():
         else:
             raise RuntimeError("level of chain %s already set" % self._id)
 
-
     def setID(self):
         '''
         Set ID for the blockchain.
@@ -169,6 +169,7 @@ class SingleChain():
         if not self._ifSetNumber and self._ifSetLevel:
             raise RuntimeError("number and level info should be set previously")
         if len(self._id) != self._level:
+            #？？？？？？？？？？？？？？？？
             raise ValueError("length of id should match level number")
         if not self._ifSetID:
             if self._level == 0:
