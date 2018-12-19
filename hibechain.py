@@ -33,12 +33,14 @@ class HIBEChain():
             blockchainid = 120 + index
             tmp = SingleChain(name, level, nodeCount, threshold, blockchainid, IPlist, passwd)
             tmp.SinglechainStart()
-            t = threading.Thread(target=tmp.constructChain,args=())
-            t.start()
+            tmp.constructChain()
             self._chains.append(tmp)
-        for t in threadlist:
-            t.join()
-
+        #     t = threading.Thread(target=tmp.constructChain,args=())
+        #     t.start()
+        #     self._chains.append(tmp)
+        # for t in threadlist:
+        #     t.join()
+            
     def constructHIBEChain(self):
         '''
         Construct the hierarchical construction of the HIBEChain.
@@ -50,10 +52,11 @@ class HIBEChain():
                 parentChain = self._chains[self._IDList.index(chain.getID()[:-1])]
                 # print(chain.getID(), parentChain.getID())
                 # parentChain.connectLowerChain(chain)
-                t = threading.Thread(target=parentChain.connectLowerChain,args=(chain,))
-                t.start()
-        for t in threadlist:
-            t.join()
+        #         t = threading.Thread(target=parentChain.connectLowerChain,args=(chain,))
+        #         t.start()
+        # for t in threadlist:
+        #     t.join()
+                parentChain.connectLowerChain(chain)
     def destructHIBEChain(self):
         '''
         Stop all the nodes in the HIBEChain.
@@ -74,6 +77,7 @@ class HIBEChain():
         '''
         try:
             index = self._IDList.index(ID)
+
             return self._chains[index]
         except ValueError:
             print("ID %s is not in the HIBEChain" % ID)
@@ -128,6 +132,7 @@ if __name__ == "__main__":
     threshList = [(3, 2), (2, 1), (1, 1), (1,1), (1,1)]
     startTime = time.time()
     hibe = HIBEChain(IDList, threshList, IPlist)
+    
     hibe.constructHIBEChain()
     hibe.setNumber()#门限
     hibe.setLevel()#层次

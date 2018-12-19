@@ -43,7 +43,7 @@ class GethNode():
 
             if not err and out:
 #                print(stdout.read().strip().decode(encoding='utf-8'))
-                print('node %s of blockchain %s at %s:%s started' % (self._nodeindex, self._blockchainid, self._ip, self._rpcPort))
+                #print('node %s of blockchain %s at %s:%s started' % (self._nodeindex, self._blockchainid, self._ip, self._rpcPort))
                 sleep(3)
                 msg = self.__msg("admin_nodeInfo", [])
                 url = "http://{}:{}".format(self._ip, self._rpcPort)
@@ -51,7 +51,7 @@ class GethNode():
                     response = requests.post(url, headers=self._headers, data=msg)
                     enode = json.loads(response.content.decode(encoding='utf-8'))['result']['enode'].split('@')[0]
                     self.Enode = '{}@{}:{}'.format(enode, self._ip, self._listenerPort)
-                    print(self.Enode)
+                    #print(self.Enode)
                 except Exception as e:
                     print("getEnode", e)
             else:
@@ -217,7 +217,6 @@ class GethNode():
         url = "http://{}:{}".format(self._ip, self._rpcPort)
         try:
             info = requests.post(url, headers=self._headers, data=msg)
-            print(info.json())
             sleep(0.5)
             # print(response.content)
         except Exception as e:
@@ -235,7 +234,7 @@ class GethNode():
         try:
             response = requests.post(url, headers=self._headers, data=msg)
             result = json.loads(response.content.decode(encoding='utf-8'))
-            print("node at %s:%d setNumber result: %s" % (self._ip, self._listenerPort, result["result"]))
+            #print("node at %s:%d setNumber result: %s" % (self._ip, self._listenerPort, result["result"]))
         except Exception as e:
             print("setNumber", e)
 
@@ -251,7 +250,7 @@ class GethNode():
         try:
             response = requests.post(url, headers=self._headers, data=msg)
             result = json.loads(response.content.decode(encoding='utf-8'))
-            print("node at %s:%d setLevel result: %s" % (self._ip, self._listenerPort, result["result"]))
+            #print("node at %s:%d setLevel result: %s" % (self._ip, self._listenerPort, result["result"]))
         except Exception as e:
             print("setLevel", e)
 
@@ -265,7 +264,7 @@ class GethNode():
         try:
             response = requests.post(url, headers=self._headers, data=msg)
             result = json.loads(response.content.decode(encoding='utf-8'))
-            print("node at %s:%d setID result: %s" % (self._ip, self._listenerPort, result["result"]))
+            #print("node at %s:%d setID result: %s" % (self._ip, self._listenerPort, result["result"]))
         except Exception as e:
             print("setID", e)
 
@@ -308,7 +307,8 @@ class GethNode():
             stdin, stdout, stderr = ssh.exec_command(STOP_CONTAINER)
             result = stdout.read()
             if result:
-                print('node %s of blockchain %s at %s:%s stopped' % (self._nodeindex, self._blockchainid, self._ip, self._listenerPort))
+                pass
+                #print('node %s of blockchain %s at %s:%s stopped' % (self._nodeindex, self._blockchainid, self._ip, self._listenerPort))
             elif not stderr:
                 print('%s@%s' % (self._ip, self._listenerPort), stderr, "stop step")
             return True if result else False

@@ -41,14 +41,15 @@ class SingleChain():
             nodeindex = index + 1
             tmp = GethNode(self._iplist, pbftid, nodeindex, self._blockchainid, self._passwd)
             # xq start a thread， target stand for a function that you want to run ,args stand for the parameters
-            t = threading.Thread(target=tmp.start)
-            threadlist.append(t)
+            # t = threading.Thread(target=tmp.start)
+            # threadlist.append(t)
+            # self._nodes.append(tmp)
+            # t.start()
             self._nodes.append(tmp)
-            t.start()
-
-        for t in threadlist:
-            # xq threads must run the join function ,because the resources of main thread is needed
-            t.join()
+            tmp.start()
+        # for t in threadlist:
+        #     # xq threads must run the join function ,because the resources of main thread is needed
+        #     t.join()
 
     def getID(self):
         '''
