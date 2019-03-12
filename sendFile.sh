@@ -1,3 +1,3 @@
 #!/bin/bash
 #ssh-keyscan $2 >> ~/.ssh/known_hosts
-sshpass -p 'Blockchain17' scp docker/$1 root@$2:$1
+sshpass -p 'test' scp docker/$1 alice@$2:$1

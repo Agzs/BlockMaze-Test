@@ -13,7 +13,7 @@ class GethNode():
     '''
     Data structure for Geth-pbft client.
     '''
-    def __init__(self, IPlist, pbftid, nodeindex, blockchainid, passwd='Blockchain17'):
+    def __init__(self, IPlist, pbftid, nodeindex, blockchainid, passwd='test'):
         self.Enode = ''
         self._id = nodeindex
         self._ip, self._rpcPort, self._listenerPort = IPlist.getNewPort()
@@ -42,7 +42,7 @@ class GethNode():
 #        print(RUN_DOCKER)
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(hostname=self._ip, port=22, username='root', password=self._passwd)
+        ssh.connect(hostname=self._ip, port=22, username='alice', password=self._passwd)
         try:
             stdin, stdout, stderr = ssh.exec_command(RUN_DOCKER)
             sleep(1)
@@ -453,7 +453,7 @@ class GethNode():
 #        sleep(0.2)
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(hostname=self._ip, port=22, username='root', password=self._passwd)
+        ssh.connect(hostname=self._ip, port=22, username='alice', password=self._passwd)
         STOP_CONTAINER = "docker stop %s" % self._name
 
         try:

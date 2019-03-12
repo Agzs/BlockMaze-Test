@@ -88,7 +88,7 @@ class IPList():
     def releaseAll(self):
         self._currentIP = 0
 
-def execCommand(cmd, ip, port=22, username='root', password='Blockchain17'):
+def execCommand(cmd, ip, port=22, username='alice', password='test'):
     '''
     exec a command on remote server using SSH
     '''
@@ -103,13 +103,13 @@ def execCommand(cmd, ip, port=22, username='root', password='Blockchain17'):
     client.close()
     return result
 
-def stopAll(IP, passwd='Blockchain17'):
+def stopAll(IP, passwd='test'):
     '''
     stop all running containers on a remote server
     '''
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(hostname=IP, port=22, username='root', password=passwd)
+    ssh.connect(hostname=IP, port=22, username='alice', password=passwd)
     try:
         NAMES = "docker ps --format '{{.Names}}'"
         stdin, stdout, stderr = ssh.exec_command(NAMES)
@@ -194,4 +194,4 @@ if __name__ == "__main__":
     ips = f.getIPs()
     for i in range(10):
         print(f.getNewPort())
-    startDockerService(f)
+#    startDockerService(f)

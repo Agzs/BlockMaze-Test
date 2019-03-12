@@ -15,7 +15,7 @@ class SingleChain():
     Data structure for a set of Geth-pbft clients for a single blockchain.
     '''
 
-    def __init__(self, name, level, nodeCount, threshold, blockchainid, IPlist, passwd='Blockchain17'):
+    def __init__(self, name, level, nodeCount, threshold, blockchainid, IPlist, passwd='test'):
         '''
         init a set of geth-pbft nodes for one blockchain.
         '''
