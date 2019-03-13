@@ -61,6 +61,8 @@ class IPList():
             for line in f.readlines():
                 if line.strip():
                     self._ips.append(IP(line.strip()))
+                else:
+                    break
 
     def getIPs(self):
         '''
@@ -88,7 +90,7 @@ class IPList():
     def releaseAll(self):
         self._currentIP = 0
 
-def execCommand(cmd, ip, port=22, username='alice', password='test'):
+def execCommand(cmd, ip, port=22, username='dell', password='dell@2017'):
     '''
     exec a command on remote server using SSH
     '''
@@ -103,13 +105,13 @@ def execCommand(cmd, ip, port=22, username='alice', password='test'):
     client.close()
     return result
 
-def stopAll(IP, passwd='test'):
+def stopAll(IP, passwd='dell@2017'):
     '''
     stop all running containers on a remote server
     '''
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(hostname=IP, port=22, username='alice', password=passwd)
+    ssh.connect(hostname=IP, port=22, username='dell', password=passwd)
     try:
         NAMES = "docker ps --format '{{.Names}}'"
         stdin, stdout, stderr = ssh.exec_command(NAMES)
@@ -192,6 +194,6 @@ def rebootServer(IPlist):
 if __name__ == "__main__":
     f = IPList('ip.txt')
     ips = f.getIPs()
-    for i in range(10):
+    for i in range(20):
         print(f.getNewPort())
-#    startDockerService(f)
+    startDockerService(f)

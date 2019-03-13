@@ -10,7 +10,7 @@ class HIBEChain():
     '''
     Data structure for a Hierarchical IBE Chain.
     '''
-    def __init__(self, IDList, threshList, IPlist, passwd='test'):
+    def __init__(self, IDList, threshList, IPlist, passwd='dell@2017'):
 
         # Check if the input params are legal
         if not len(IDList) == len(threshList):

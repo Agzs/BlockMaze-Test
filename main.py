@@ -22,19 +22,21 @@ IPlist = IPList('ip.txt')
 # startDockerService(IPlist)
 IDList = [""]
 threshList = [(4, 3)]
-#idForLevel1 = ["0001", "0002"]
-#threshForLevel1 = [(4,3), (4,3)]
-#idForLevel2 = ["00010001", "00010002", "00020001", "00020002"]
-#threshForLevel2 = [(4,3), (4,3), (4,3), (4,3)]
-#IDList += idForLevel1 + idForLevel2
-#threshList += threshForLevel1 + threshForLevel2
+idForLevel1 = ["0001", "0002"]
+threshForLevel1 = [(4,3), (4,3)]
+idForLevel2 = ["00010001", "00020001", "00020002"]
+threshForLevel2 = [(4,3), (4,3), (4,3)]
+IDList += idForLevel1 + idForLevel2
+threshList += threshForLevel1 + threshForLevel2
 
-nodeCount = 5
-for i in range(1, nodeCount-3):
-    index = str(i)
-    tmpID = '0' * (4-len(index)) + index
-    IDList.append(tmpID)
-    threshList.append((1,1))
+#nodeCount = 40
+#for i in range(1, nodeCount-3):
+#    index = str(i)
+#    tmpID = '0' * (4-len(index)) + index
+#    IDList.append(tmpID)
+#    threshList.append((1,1))
+print(IDList)
+print(threshList)
 
 #IDList = ["", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008"]
 #threshList = [(4,3), (1, 1), (1, 1), (1, 1), (1, 1), (1, 1), (1, 1), (1, 1), (1, 1)]
@@ -44,6 +46,7 @@ hibe.constructHIBEChain()
 
 connectionTime = time.time()
 
+print("connection time", connectionTime-startTime)
 
 a = hibe.getChain("")
 a1 = a.getNode(1)
@@ -56,7 +59,7 @@ a1 = a.getNode(1)
 #    if count >= 20:
 #        break
 #    time.sleep(0.5)
-
+'''
 print('another %s seconds waiting for addPeer' % str(nodeCount//50+10))
 time.sleep(nodeCount//50+10)
 print('peer count of a1----', a1.getPeerCount())
@@ -102,7 +105,7 @@ for chain in hibe._chains[1:]:
         time.sleep(0.3)
         count = 0
     tmpNode = chain.getNode(1)
-    t = threading.Thread(target=tmpNode.testSendTransaction, args=("0001", 1, "0x1", 1, 250))
+    t = threading.Thread(target=tmpNode.testSendTransaction, args=("0001", 1, "0x1", 1, 200))
     t.start()
     threads.append(t)
 for t in threads:
@@ -167,7 +170,7 @@ print(time.ctime())
 #a1.startMiner()
 
 #hibe.destructHIBEChain()
-
+'''
 
 
 
