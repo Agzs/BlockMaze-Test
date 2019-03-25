@@ -1,2 +1,2 @@
-# testGethPBFT
-Scripts for testing geth-pbft.
+# singleGeth
+Scripts for testing large-scale geth.
