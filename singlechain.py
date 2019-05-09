@@ -1,365 +1,296 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from const import USERNAME, PASSWD, SEMAPHORE
 from gethnode import GethNode
-from iplist import IPList, USERNAME, PASSWD
-import threading
-from conf import confGenesis, confTerminals
+from iplist import IPList
+from conf import generate_genesis
+from functools import wraps
 import time
 import subprocess
+import threading
+import re
 
-from functools import wraps
+
+# class SetGenesis():
+#     """Decorator. Set genesis.json file for a chain."""
+#     def __init__(self, func):
+#         self.func = func
+#     def __call__(self, *args):
+#         pass
+#     def __repr__(self):
+#         """Return the function's docstring."""
+#         return self.func.__doc__
+#     def __get__(self, obj, objtype):
+#         """Support instance methods."""
+#         return functools.partial(self.__call__, obj)
+
+
+# def add_peer(node1: GethNode, node2: GethNode, label: int):
+#     # Use semaphore to limit number of concurrent threads
+#     SEMAPHORE.acquire()
+#     node1.add_peer(node2.get_enode(), label)
+#     # time.sleep(0.5)
+#     SEMAPHORE.release()
+#     # print(threading.active_count())
+
 
 class SingleChain():
-    '''
+    """
     Data structure for a set of Geth-pbft clients for a single blockchain.
-    '''
+    """
+    #SingleChain(     'zzzz', node_count,  121, ip_list)
+    def __init__(self, name, node_count, blockchain_id, ip_list, username=USERNAME, password=PASSWD):
 
-    def __init__(self, name, level, nodeCount, threshold, blockchainid, IPlist, username=USERNAME, passwd=PASSWD):
-        '''
-        init a set of geth-pbft nodes for one blockchain.
-        '''
-        if nodeCount > IPlist.getFullCount():
+        # Check if the input params are legal.
+        if node_count > ip_list.get_full_count():
             raise ValueError("not enough IPs")
 
-        self._username = username
-        self._passwd = passwd
-        self._level = level
-        self._id = name
-        self.nodeCount = nodeCount
-        self.threshold = threshold
-        self._blockchainid = blockchainid
-        self._IPlist = IPlist
-        self._nodes = []
-        self._IPs = set()
-        self._ifSetNumber = False
-        self._ifSetLevel = False
-        self._ifSetID = False
-        self._isTerminal = False
-        self._cfgFile = None
-        self._accounts = []
+        self.username = username
+        self.password = password
+        self.chain_id = name    # chain id
+        self.node_count = node_count
+        self.blockchain_id = blockchain_id
+        self.ip_list = ip_list
+        self.nodes = []
+        self.ips = set()
+        self.if_set_number = False
+        self.if_set_id = False
+        self.is_terminal = False
+        self.config_file = None
+        self.accounts = []
 
-    def SinglechainStart(self):
-        '''
-        run a singlechain
-        '''
-        threadlist = []
-        for index in range(self.nodeCount):
-            pbftid = index
-            nodeindex = index + 1
-            tmp = GethNode(self._IPlist, pbftid, nodeindex, self._blockchainid, self._username, self._passwd)
-            self._IPs.add(tmp._IP)
-            self._nodes.append(tmp)
+    def singlechain_start(self):
+        """Start all containers for a single chain."""
+        threads = []
+        for index in range(self.node_count):
+            node_index = index + 1
+            tmp = GethNode(self.ip_list, node_index, self.blockchain_id, self.username, self.password)
+            self.ips.add(tmp.ip)
+            self.nodes.append(tmp)
             # xq start a thread， target stand for a function that you want to run ,args stand for the parameters
             t = threading.Thread(target=tmp.start)
             t.start()
-            threadlist.append(t)
+            threads.append(t)
+            time.sleep(0.3)
 
-        for t in threadlist:
+        for t in threads:
             # xq threads must run the join function, because the resources of main thread is needed
             t.join()
 
-        for index in range(self.nodeCount):
-            self._accounts.append(self._nodes[index]._accounts[0])
-#        print(self._accounts)
+        for index in range(self.node_count):
+            self.accounts.append(self.nodes[index].accounts[0])
+        print(self.accounts)
 
-    def _setGenesisDecorator(config):
-        '''
-        Decorator for setting genesis.json file for a chain.
-        '''
+    def set_genesis(config):
+        """Decorator for setting genesis.json file for a chain."""
+
         @wraps(config)
         def func(self, *args):
             config(self, *args)
-            for serverIP in self._IPs:
-                subprocess.run(['sshpass -p %s scp docker/%s %s@%s:%s' % (self._passwd, self._cfgFile,
-                               self._username, serverIP._ipaddr, self._cfgFile) ], stdout=subprocess.PIPE, shell=True)
-                time.sleep(0.5)
+            for server_ip in self.ips:
+                #ssh登陆不能在命令行中指定密码 sshpass 可以   
+                #sshpass和ssh配合远程登录  sshpass -p [passwd] ssh -p [port] root@192.168.X.X
+                #sshpass和scp配合发送文件到服务器   sshpass -p 123456 scp mkssh.txt root@slave1:/root/
+                #将config_file远程发送到主机里
+                subprocess.run(['sshpass -p %s scp %s %s@%s:%s' % (self.password, self.config_file,
+                               self.username, server_ip.address, self.config_file)], stdout=subprocess.PIPE, shell=True)
+                time.sleep(0.2)
                 threads = []
-                for node in self._nodes:
-                    if node._IP == serverIP:
-                        CMD = 'docker cp %s %s:/root/%s' % (self._cfgFile, node._name, self._cfgFile)
-                        t = threading.Thread(target=serverIP.execCommand, args=(CMD,))
+                for node in self.nodes:
+                    if node.ip == server_ip:
+                        #对于每个容器  将config_file 从主机copy到容器/root/目录下
+                        command = 'docker cp %s %s:/root/%s' % (self.config_file, node.name, self.config_file)
+                        t = threading.Thread(target=server_ip.exec_command, args=(command,))
                         t.start()
                         threads.append(t)
+                        print('copying genesis file')
+#                        node._ifSetGenesis = True
+                        time.sleep(0.1)
                 for t in threads:
                     t.join()
-                time.sleep(0.2)
+            time.sleep(0.5)
         return func
 
-    @_setGenesisDecorator
-    def ConsensusChainConfig(self):
-        '''
-        set genesis.json for a blockchain & init with genesis.json
-        '''
-        if self._id is "":
-            self._cfgFile = '0.json'
+    @set_genesis
+    def config_consensus_chain(self):
+        """Set genesis.json for a blockchain & init with genesis.json."""
+        if self.chain_id is "":
+            self.config_file = '0.json'
         else:
-            self._cfgFile = '%s.json' % self._id
-        confGenesis(self._blockchainid, self._accounts, self._cfgFile)
+            self.config_file = '%s.json' % self.chain_id
+        generate_genesis(self.blockchain_id, self.accounts, self.config_file)
+        time.sleep(0.02)
 
-    @_setGenesisDecorator
-    def LeafChainConfig(self, TerminalChains):
-        if self._id is "":
-            self._cfgFile = '0.json'
+    @set_genesis
+    def config_terminal(self):
+        """Set genesis.json for terminal equipments."""
+        if len(self.chain_id) == 4:
+            self.config_file = '0.json'
         else:
-            self._cfgFile = '%s.json' % self._id
-        confTerminals(self._cfgFile, TerminalChains)
+            self.config_file = '%s.json' % self.chain_id[:-4]
 
-    @_setGenesisDecorator
-    def TerminalConfig(self):
-        '''
-        set genesis.json for terminal equipments.
-        '''
-        if len(self._id) == 4:
-            self._cfgFile = '0.json'
-        else:
-            self._cfgFile = '%s.json' % self._id[:-4]
+    def run_nodes(self):
+        """Run nodes on a chain."""
+        self.init_geth()
+        self.run_geth_nodes()
+        self.construct_chain()
 
-    def runNodes(self):
-        '''
-        Run nodes on a chain.
-        '''
-        self.gethInit()
-        self.runGethNodes()
-        self.constructChain()
-
-    def gethInit(self):
-        '''
+    def init_geth(self):
+        """
         run geth init command for nodes in a chain
-        '''
-        if self._cfgFile is None:
+        """
+        print("self.config_file=",self.config_file)
+        if self.config_file is None:
             raise ValueError("initID is not set")
         threads = []
-        for serverIP in self._IPs:
-            for node in self._nodes:
-                if node._IP == serverIP:
-                    INIT = 'docker exec -t %s geth --datadir abc init %s' % (node._name, self._cfgFile)
-                    t = threading.Thread(target=serverIP.execCommand, args=(INIT,))
+        for server_ip in self.ips:
+            for node in self.nodes:
+                if node.ip == server_ip:
+                    init_geth_command = 'docker exec -t %s geth --datadir abc init %s' % (node.name, self.config_file)
+                    t = threading.Thread(target=server_ip.exec_command, args=(init_geth_command,))
                     t.start()
                     threads.append(t)
+                    time.sleep(0.1)
         for t in threads:
             t.join()
-        time.sleep(0.3)
 
-    def runGethNodes(self):
-#        print('run geth nodes:')
+    def run_geth_nodes(self):
         threads = []
-        count = 0
-        for node in self._nodes:
-            RUN = ('geth --datadir abc --cache 512 --port 30303 --rpcport 8545 --rpcapi '
+        for node in self.nodes:
+            start_geth_command = ('geth --datadir abc --networkid 55661 --cache 512 --port 30303 --rpcport 8545 --rpcapi '
                    'admin,eth,miner,web3,net,personal,txpool --rpc --rpcaddr \"0.0.0.0\" '
-                   '--pbftid %d --nodeindex %d --blockchainid %d --unlock %s --password '
-                   '\"passfile\" --maxpeers 5000 --maxpendpeers 1000 --syncmode \"full\" --nodiscover') % (node._pbftid,
-                                                                node._nodeindex, node._blockchainid, node._accounts[0])
-            CMD = 'docker exec -td %s %s' % (node._name, RUN)
-            print(RUN)
-            count += 1
-            if count == 10:
-                time.sleep(0.3)
-                count = 0
-            t = threading.Thread(target=node._IP.execCommand, args=(CMD,))
+                   '--unlock %s --password \"passfile\" --maxpeers 4096 --maxpendpeers 4096 --syncmode \"full\" --nodiscover') % (node.accounts[0])
+            command = 'docker exec -td %s %s' % (node.name, start_geth_command) #主机内执行的完整命令
+            # print(start_geth_command)
+            t = threading.Thread(target=node.ip.exec_command, args=(command,))  #通过ip执行
             t.start()
             threads.append(t)
+            time.sleep(0.5)
         for t in threads:
             t.join()
-        print('node starting...')
-        for i in range(8):
+        print('node starting')
+        # must wait here
+        for _ in range(3):
             print('.', end='')
             time.sleep(1)
-
+        print()
         threads = []
-        for node in self._nodes:
-            t = threading.Thread(target=node.setEnode)
+        for node in self.nodes:
+            t = threading.Thread(target=node.set_enode) #设置client的 enode信息
             t.start()
             threads.append(t)
         for t in threads:
             t.join()
-        time.sleep(0.2)
+        print("-------------------------set node----------------")
+        # for node in self.nodes:
+        #     node.set_enode()
+        time.sleep(0.1)
 
-    def getID(self):
-        '''
-        return ID of the chain.
-        '''
-        return self._id
+    def get_chain_id(self):
+        """return chain id of the chain."""
+        return self.chain_id
 
-    def getPrimer(self):
-        '''
-        Return the primer node of the set of Geth-pbft clients.
-        '''
-        return self._nodes[0]
+    def get_primer_node(self):
+        """Return the primer node of the set of Geth-pbft clients."""
+        return self.nodes[0]
 
-    def getNode(self, nodeindex):
-        '''
-        Return the node of a given index.
-        '''
-        if nodeindex <= 0 or nodeindex > len(self._nodes):
-            raise ValueError("nodeindex out of range")
-        return self._nodes[nodeindex-1]
+    def get_node_by_index(self, node_index):
+        """Return the node of a given index."""
+        if node_index <= 0 or node_index > len(self.nodes):
+            raise ValueError("node index out of range")
+        return self.nodes[node_index-1]
 
-    def constructChain(self):
-        '''
-        Construct a single chain.
-        '''
-        if not self._isTerminal:
+    def construct_chain(self):
+        """Construct a single chain.  节点互联"""
+        if not self.is_terminal:
             print("constructing single chain")
-            startTime = time.time()
+            start_time = time.time()
             threads = []
-            count = 0
-            for i in range(len(self._nodes)):
-                for j in range(i+1, len(self._nodes)):
-                    tmpEnode = self._nodes[j].getEnode()
-                    count += 1
-                    if count == 8:
-                        time.sleep(0.2)
-                        count = 0
-                    t = threading.Thread(target=self._nodes[i].addPeer, args=(tmpEnode, 0))
-                    t.start()
-                    threads.append(t)
+            node_count = len(self.nodes)
+
+            # connect nodes in a single chain with each other
+            for i in range(node_count):
+                # for j in range(node_count):
+                for j in range(i+1, node_count):
+                    # add_peer(self.nodes[i], self.nodes[j], 0)  ### limit number of concurrent threads
+
+                    # tmpEnode = self.nodes[j].getEnode()
+                    # self.nodes[i].add_peer(tmpEnode, 0) #########
+                    # t1 = threading.Thread(target=add_peer, args=(self.nodes[i], self.nodes[j], 0))
+                    print("______________________addpeer______________________")
+                    t1 = threading.Thread(target=self.nodes[i].add_peer, args=(self.nodes[j].get_enode(),))
+                    t1.start()
+                    time.sleep(0.05)    # if fail. add this line.
+                    # t2 = threading.Thread(target=add_peer, args=(self.nodes[j], self.nodes[i], 0))
+                    # t2.start()
+                    # time.sleep(0.1)    # O(n)
+                    threads.append(t1)
+                    # threads.append(t2)
+                    # time.sleep(0.3)
+                break
             for t in threads:
                 t.join()
-            endTime = time.time()
-            print('%.3fs' % (endTime - startTime))
+            print('active threads:', threading.active_count())
+            end_time = time.time()
+            print('%.3fs' % (end_time - start_time))
             print("-------------------------")
-            time.sleep(0.2)
+            time.sleep(len(self.nodes)//10)
 
-    def destructChain(self):
-        '''
-        Remove all the nodes in the chain.
-        '''
-        threadlist = []
-        for node in self._nodes:
-            t = threading.Thread(target=node.stop,args=())
+    def destruct_chain(self):
+        """Stop containers to destruct the chain."""
+        threads = []
+        for node in self.nodes:
+            t = threading.Thread(target=node.stop)
             t.start()
-            threadlist.append(t)
-        for t in threadlist:
-            t.join()
-
-    def connectLowerChain(self, otherChain):
-        '''
-        Connect to a lower single chain.
-        '''
-        time.sleep(0.3)
-        threads = []
-        count = 0
-        for node in self._nodes:
-            for other in otherChain._nodes:
-                ep = node.Enode
-                count += 1
-                if count == 10:
-                    count = 0
-                    time.sleep(0.3)
-                t = threading.Thread(target=other.addPeer, args=(ep, 2))
-                t.start()
-                threads.append(t)
+            threads.append(t)
         for t in threads:
             t.join()
-        time.sleep(1)
 
+    def get_node_count(self):
+        """Return the number of nodes of the blockchain."""
+        return len(self.nodes)
 
-    def connectUpperChain(self, otherChain):
-        '''
-        Connect to an upper single chain.
-        '''
-        time.sleep(0.3)
-        threads = []
-        count = 0
-        for node in self._nodes:
-            for other in otherChain._nodes:
-                ep = other.Enode
-                count += 1
-                if count == 10:
-                    count = 0
-                    time.sleep(0.3)
-                t = threading.Thread(target=node.addPeer, args=(ep, 2))
+    def start_miner(self):
+        """Start miners of all nodes on the chain."""
+        if not self.is_terminal:
+            threads = []
+            for node in self.nodes:
+                t = threading.Thread(target=node.start_miner)
                 t.start()
                 threads.append(t)
-        for t in threads:
-            t.join()
-        time.sleep(1)
-
-
-    def getNodeCount(self):
-        '''
-        Return the number of nodes of the blockchain.
-        '''
-        return len(self._nodes)
-
-    def setNumber(self):
-        '''
-        Set (number, threshold) value for the nodes of the blockchain.
-        '''
-        if not self._ifSetNumber:
-            p = self.getPrimer()
-            p.setNumber(self.nodeCount, self.threshold)
-            self._ifSetNumber = True
-        else:
-            raise RuntimeError("number of chain %s already set" % self._id)
-        time.sleep(0.1*(len(self._nodes)//10+1))
-
-    def setLevel(self, maxLevel):
-        '''
-        Set level info for each node.
-        '''
-        threadlist = []
-        count = 0
-        if not self._ifSetLevel:
-            for node in self._nodes:
-                count += 1
-                if count == 10:
-                    count = 0
-                    time.sleep(0.2)
-                t = threading.Thread(target = node.setLevel,args=(self._level,maxLevel))
-                t.start()
-                threadlist.append(t)
-            for t in threadlist:
+                time.sleep(0.02)
+            for t in threads:
                 t.join()
-            self._ifSetLevel = True
-        else:
-            raise RuntimeError("level of chain %s already set" % self._id)
-
-    def setID(self):
-        '''
-        Set ID for a blockchain.
-        '''
-        if not self._ifSetNumber and self._ifSetLevel:
-            raise RuntimeError("number and level info should be set previously")
-        if len(self._id) // 4 != self._level:
-            raise ValueError("length of id should match level number")
-        if not self._ifSetID:
-            if self._level == 0:
-                p = self.getPrimer()
-                p.setID("")
-            else:
-                theadlist = []
-                count = 0
-                for node in self._nodes:
-                    count += 1
-                    if count == 5:
-                        count = 0
-                        time.sleep(0.5)
-                    t = threading.Thread(target=node.setID,args=(self._id,))
-                    t.start()
-                    theadlist.append(t)
-                for t in theadlist:
-                    t.join()
-            self._ifSetID = True
-        else:
-            raise RuntimeError("ID of chain %s already set" % self._id)
 
 
 if __name__ == "__main__":
-    IPlist = IPList('ip.txt')
-    nodeNum = 4
-    c = SingleChain('0001', 1, nodeNum, nodeNum*3//4+1, 121, IPlist)
-    c.SinglechainStart()
-    c.ConsensusChainConfig()
-    c.runNodes()
-#    p = c.getPrimer()
-#    print(p.getPeerCount())
-    for i in range(1, nodeNum+1):
-        node = c.getNode(i)
-#        acc = node.getAccounts()[0]
-#        print(acc)
-#        print(node.getBalance(acc))
-        print(node.getPeerCount())
-    c.destructChain()
+    ip_list = IPList('ip.txt')
+    node_count = 3  #节点数量
+    c = SingleChain('vnt', node_count,  121, ip_list)
+    c.singlechain_start()
+    c.config_consensus_chain()
+    c.run_nodes()  #节点互联成功    
+    c.get_node_by_index(1).start_miner()
+    time.sleep(10)
+    pubk = c.get_node_by_index(3).get_pubkeyrlp(str(c.get_node_by_index(3).get_accounts()[0])) 
+    mint_hash = c.get_node_by_index(2).send_mint_transaction(c.get_node_by_index(2).get_accounts()[0],"0x100")
+    mint_hash=mint_hash.split("\"")[1]
+    print("mint-hash=",mint_hash)
+    time.sleep(1)     
+    send_hash = c.get_node_by_index(2).send_send_transaction(c.get_node_by_index(2).get_accounts()[0],"0x10",str(pubk))
+    send_hash=send_hash.split("\"")[1]
+    print("send-hash=",send_hash)
+    time.sleep(20)
+    c.get_node_by_index(1).get_transaction(send_hash)
+    deposit_hash=c.get_node_by_index(3).send_deposit_transaction(c.get_node_by_index(3).get_accounts()[0],send_hash)
+    print("deposit_hash",deposit_hash)
+    redeem_hash=c.get_node_by_index(2).send_redeem_transaction(c.get_node_by_index(2).get_accounts()[0],"0x10") 
+    print("redeem_hash",redeem_hash)
+    time.sleep(10)
+    c.get_node_by_index(1).stop_miner()
+    c.destruct_chain()
+    
+
+
+

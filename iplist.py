@@ -1,265 +1,282 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from const import USERNAME, PASSWD, MAXPAYLOAD, SEMAPHORE
 import paramiko
 import threading
 import time
 import subprocess
 import os
 
-USERNAME = 'u0' #"dell"
-PASSWD = 'test' #"dell@2017"
 
-class IP():
-    '''
-    Create an IP object from a server with a list of rpc ports and a list of listener ports.
-    '''
-    def __init__(self, ipaddr, currentPort=0, username=USERNAME, password=PASSWD):
-        if len(ipaddr.split('.')) < 4:
-            print("ip is", ipaddr)
-            raise ValueError('format of ip is not correct')
-        self._maxPayload = 20  # maximum number of clients running on one server
-        self._currentPort = currentPort
-        self._ipaddr = ipaddr
-        self._rpcPorts = range(8515, 8515 + self._maxPayload * 10, 10)
-        self._listenerPorts = range(30313, 30313 + self._maxPayload * 10, 10)
-        self._username = username
-        self._password = password
+
+
+class IP(object):
+    """
+    Create an IP object from a server with a list of rpc ports and a list of listener ports.为一个主机服务
+    """
+
+    def __init__(self, ip_address, current_port=0, username=USERNAME, password=PASSWD):
+        if len(ip_address.split('.')) < 4:
+            print("ip is", ip_address)
+            raise ValueError('format of ip is not correct') #ip 不对
+
+        self.max_payload = MAXPAYLOAD # 一个主机下最大运行客户端数量
+        self.current_port = current_port # 与_maxPayload有关  表示目前是第几个  下标使用
+        self.address = ip_address
+        self.rpc_ports = range(8515, 8515 + self.max_payload * 10, 10) #rpc端口   8515 8525
+        self.ethereum_network_ports = range(30313, 30313 + self.max_payload * 10, 10) #以太坊监听端口  30313 30323
+        self.username = username
+        self.password = password
 
     def __repr__(self):
-        return self._ipaddr
+        return self.address
 
-    def getNewPort(self):
-        '''
-        Return a tuple from a remote server:(IPaddr, rpcPort, listenerPort).
-        '''
-        if self._currentPort >= self._maxPayload:
+    def get_new_port(self):
+        """Return a tuple from a remote server:(ip_address, rpc_port, ethereum_network_port)."""
+        if self.current_port >= self.max_payload: # 超载
             raise ValueError("over load")
-        result = (self._rpcPorts[self._currentPort], self._listenerPorts[self._currentPort])
-        self._currentPort += 1
+        result = (self.rpc_ports[self.current_port], self.ethereum_network_ports[self.current_port])
+        self.current_port += 1
         return result
 
-    def getMaxPayload(self):
-        '''
-        Return the maximum containers able to run on the server.
-        '''
-        return self._maxPayload
+    def get_max_payload(self):
+        """Return the maximum containers able to run on the server."""
+        return self.max_payload
 
-    def isFullLoaded(self):
-        '''
-        Decide whether the server is full loaded.
-        '''
-        return self._currentPort >= self._maxPayload
+    def is_full_loaded(self):
+        """Decide whether the server is full loaded."""
+        return self.current_port >= self.max_payload
 
-    def releasePorts(self):
-        self._currentPort = 0
+    def release_ports(self):
+        self.current_port = 0
 
-    def execCommand(self, cmd, port=22):
-        '''
-        exec a command on remote server using SSH
-        '''
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(self._ipaddr, port, self._username, self._password)
-        stdin, stdout, stderr = client.exec_command(cmd)
-        if not stderr.read():
-            result = stdout.read().strip().decode(encoding='utf-8')
-            client.close()
-            return result
-        else:
-            result = stderr.read().strip().decode(encoding='utf-8')
-            print(result)
-            client.close()
-            if result:
-                raise RuntimeError("exec command error: %s" % cmd)
+    def exec_command(self, cmd, port=22):
+        """
+        Exec a command on remote server using SSH connection.
+        """
+        SEMAPHORE.acquire()
+        with paramiko.SSHClient() as client:
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.connect(self.address, port, self.username, self.password)
+            # time.sleep(0.2)
+            stdin, stdout, stderr = client.exec_command(cmd, get_pty=True)
+            SEMAPHORE.release()
+            # time.sleep(0.1)
+            out = stdout.read().strip().decode(encoding='utf-8')
+            err = stderr.read().strip().decode(encoding='utf-8')
+            if not err:
+                result = out
+                return result
+            else:
+                result = err
+                if result:
+                    print('-------------')
+                    print(cmd)
+                    print(result)
+                    print('-------------')
+                    raise RuntimeError("exec command error: %s" % cmd)
 
-    def isDockerRunning(self):
-        '''
-        Check if docker service is running on specified ip.
-        '''
-        CMD = 'systemctl status docker'
-        result = self.execCommand(CMD).split("\n")
-        return True if len(result) >= 5 else False
+    def is_docker_running(self):
+        """Check if docker service is running on specified ip."""
+        command = 'systemctl is-active docker'
+        result = self.exec_command(command)
+        return True if result == 'active' else False
 
-    def stopContainers(self):
-        '''
-        Stop all containers on the server.
-        '''
-        NAMES = "docker ps --format '{{.Names}}'"
-        result = self.execCommand(NAMES).split()
+    def stop_containers(self):
+        """Stop all containers on the server."""
+        get_names_command = "docker ps --format '{{.Names}}'"
+        result = self.exec_command(get_names_command).split()
         print('-----------')
         print(' '.join(result))
-        STOP = 'docker stop %s' % ' '.join(result)
-        result = self.execCommand(STOP)
-        print("all nodes at %s stopped" % self._ipaddr)
+        stop_all_containers_command = 'docker stop %s' % ' '.join(result)
+        self.exec_command(stop_all_containers_command)
+        print("all nodes at %s stopped" % self.address)
         print('-----------')
 
-    def rebootServer(self):
-        my_cmd = 'echo %s | sshpass -p %s ssh -tt %s@%s sudo reboot' % (self._password, self._password, self._username, self._ipaddr)
-        print("server %s reboot" % self._ipaddr)
-        subprocess.run(my_cmd, stdout=subprocess.PIPE, shell=True)
+    def reboot_server(self):
+        """Reboot remote server with SSH connection."""
+        ssh_reboot_command = 'echo %s | sshpass -p %s ssh -tt %s@%s sudo reboot' % (
+            self.password, self.password, self.username, self.address)
+        print("server %s reboot" % self.address)
+        subprocess.run(ssh_reboot_command, stdout=subprocess.PIPE, shell=True)
 
-    def shutdownServer(self):
-        my_cmd = 'echo %s | sshpass -p %s ssh -tt %s@%s sudo shutdown now' % (self._password, self._password, self._username, self._ipaddr)
-        print("server %s poweroff" % self._ipaddr)
-        subprocess.run(my_cmd, stdout=subprocess.PIPE, shell=True)
+    def shutdown_server(self):
+        """Shutdown remote server with SSH connection."""
+        ssh_shutdown_command = 'echo %s | sshpass -p %s ssh -tt %s@%s sudo shutdown now' % (
+            self.password, self.password, self.username, self.address)
+        print("server %s shutdown" % self.address)
+        time.sleep(0.02)
+        subprocess.run(ssh_shutdown_command, stdout=subprocess.PIPE, shell=True)
 
 
-class IPList():
-    '''
-    Manage IPs and ports of all servers involved.
-    '''
-    def __init__(self, ipFile, currentIP=0, username=USERNAME, password=PASSWD):
-        '''
-        Read IPs from a file.
-        '''
-        self._currentIP = currentIP
-        self._IPs = []
-        with open(ipFile, 'r') as f:
+class IPList(object):
+    """Manage IPs and ports of all servers involved. 处理所有的客户端  ip以及端口   一个ip会有多个客户端"""
+
+    def __init__(self, ip_file, current_ip=0, username=USERNAME, password=PASSWD):
+        """Read IPs from a file."""
+        self.current_ip = current_ip #现在的ip使用数量 表示目前是第几个  下标使用
+        self.ips = []
+        with open(ip_file, 'r') as f: #从ipFile中读取ip
             for line in f.readlines():
                 if line.strip():
-                    self._IPs.append(IP(line.strip()))
+                    self.ips.append(IP(line.strip())) #创建IP实例，存放在_ips[]中
                 else:
                     break
+        self._init_service()
 
-    def getIPs(self):
-        '''
-        Return an IP list.
-        '''
-        return self._IPs
+    def get_ips(self):
+        """Return an list of IPs."""
+        return self.ips
 
-    def getFullCount(self):
-        '''
-        Return the number of containers when all servers are full loaded.
-        '''
-        return len(self._IPs) * self._IPs[0].getMaxPayload() if len(self._IPs) else 0
+    def get_full_count(self):
+        """Return the number of containers when all servers are full loaded."""
+        return len(self.ips) * self.ips[0].get_max_payload() if len(self.ips) else 0
 
-    def getNewPort(self):
-        '''
-        Get a new rpcPort and a new listenerPort along with the IP addr of a server.
-        Return: (IPaddr, rpcPort, listenerPort)
-        '''
-        if self._currentIP >= len(self._IPs):
+    def get_new_port(self):
+        """
+        Get a new rpc_port and a new ethereum_network_port along with the IP addr of a server.
+        Return: (ip_address, rpc_port, ethereum_network_port)
+        """
+        if self.current_ip >= len(self.ips):  #判断现在使用的IP数量
             raise ValueError("server overload")
-        rpcPort, listenerPort = self._IPs[self._currentIP].getNewPort()
-        currentIP = self._IPs[self._currentIP]
-        if currentIP.isFullLoaded():
-            self._currentIP += 1
-        return (currentIP, rpcPort, listenerPort)
+        rpc_port, ethereum_network_port = self.ips[self.current_ip].get_new_port() #调用子类IP的getNewPort()
+        current_ip = self.ips[self.current_ip]
+        if current_ip.is_full_loaded(): #判断该ip上客户端数量是否超载  超载使用新ip
+            self.current_ip += 1
+        return current_ip, rpc_port, ethereum_network_port
 
-    def releaseAll(self):
-        self._currentIP = 0
+    def release_all_ports(self):
+        self.current_ip = 0
 
-    def stopAllContainers(self):
-        '''
-        Stop all containers running on the servers.
-        '''
+    def stop_all_containers(self):
+        """Stop all containers running on the servers."""
         threads = []
-        for ip in self._IPs:
-            t = threading.Thread(target=ip.stopContainers)
+        for ip in self.ips:
+            t = threading.Thread(target=ip.stop_containers)
             t.start()
             threads.append(t)
         for t in threads:
             t.join()
 
+    #        for IP in self.ips:
+    #            print(IP)
+    #            ip.exec_command("docker stop $(docker ps --format '{{.Names}}')")
 
-    def startDockerService(self):
-        '''
+    def _init_service(self):
+        """
+        Add key to know_hosts file.
         Start docker service on all servers.
-        '''
-        startTime = time.time()
-        CMD = 'echo %s | sudo systemctl start docker' % (PASSWD)
-        home = os.path.expanduser('~')
-        for ip in self._IPs:
-            myCMD = ['ssh-keyscan'] + [ip._ipaddr]
-            with open('%s/.ssh/known_hosts' % home, 'a') as outfile:
-                subprocess.run(myCMD, stdout=outfile)
+        """
+        start_time = time.time()
+        known_hosts = os.path.expanduser('~/.ssh/known_hosts')
+        keys = paramiko.hostkeys.HostKeys(filename=known_hosts)
 
+        # get results from multi-threading
+        # def _set_thread_result(IP, results, index):
+        #     results[index] = keys.lookup(ip.address)
+        def _set_thread_result(ip: IP, results: dict, index: int):
+            return results.setdefault(str(index), keys.lookup(ip.address))
+
+        length = len(self.ips)
         threads = []
-        for IP in self._IPs:
-            print("%s at %s" % (CMD, IP._ipaddr))
-            t = threading.Thread(target=IP.execCommand, args=(CMD,))
-            threads.append(t)
+        results = {}
+        for index, ip in enumerate(self.ips):
+            # use multi-threading to lookup keys
+            t = threading.Thread(target=_set_thread_result, args=(ip, results, str(index)))
             t.start()
-
+            threads.append(t)
         for t in threads:
             t.join()
-        endTime = time.time()
-        print('start docker service on all servers. elapsed time: %.3fs' % (endTime-startTime))
 
-    def rebootServers(self):
-        for ip in self._IPs:
-            ip.rebootServer()
+        # add keys to known_hosts one by one
+        for i in range(length):
+            if not results.get(str(i)):
+                print('%s is not in know_hosts. Adding to known_hosts' % self.ips[i])
+                get_key_command = 'ssh-keyscan %s' % self.ips[i].address
+                with open(known_hosts, 'a') as outfile:
+                    subprocess.run(get_key_command, stdout=outfile, shell=True)
 
-    def shutdownServers(self):
-        for ip in self._IPs:
-            ip.shutdownServer()
+        start_docker_command = 'echo %s | sudo -S systemctl start docker' % PASSWD
+        print('starting docker service on all services')
+        threads = []
+        for ip in self.ips:
+            t = threading.Thread(target=ip.exec_command, args=(start_docker_command,))
+            threads.append(t)
+            t.start()
+        for t in threads:
+            t.join()
+        end_time = time.time()
+        print('initService elapsed time: %.3fs' % (end_time - start_time))
 
-def execCommand(cmd, ipaddr, port=22, username=USERNAME, password=PASSWD):
-    '''
-    exec a command on remote server using SSH
-    '''
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(ipaddr, port, username, password)
-    stdin, stdout, stderr = client.exec_command(cmd)
-    if not stderr.read():
-        result = stdout.read().strip().decode(encoding='utf-8')
-    else:
-        result = stderr.read().strip().decode(encoding='utf-8')
-    client.close()
+    def reboot_servers(self):
+        threads = []
+        for ip in self.ips:
+            t = threading.Thread(target=ip.reboot_server)
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+
+    def shutdown_servers(self):
+        threads = []
+        for ip in self.ips:
+            t = threading.Thread(target=ip.shutdown_server)
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+
+
+def exec_command(cmd, ip_address, port=22, username=USERNAME, password=PASSWD):
+    """Exec a command on remote server using SSH connection."""
+    with paramiko.SSHClient() as client:
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(str(ip_address), port, username, password)
+        time.sleep(0.2)
+        stdin, stdout, stderr = client.exec_command(cmd, get_pty=True)
+        time.sleep(0.1)
+        out = stdout.read().strip().decode(encoding='utf-8')
+        err = stderr.read().strip().decode(encoding='utf-8')
+        if not err:
+            result = out
+        else:
+            result = err
     return result
 
-#def stopAll(IP, username=USERNAME, password=PASSWD):
-#    '''
-#    Stop all running containers on a server.
-#    '''
-#    ssh = paramiko.SSHClient()
-#    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-#    ssh.connect(hostname=IP, port=22, username=username, password=password)
-#    try:
-#        NAMES = "docker ps --format '{{.Names}}'"
-#        stdin, stdout, stderr = ssh.exec_command(NAMES)
-#        result = stdout.read()
-#        if result:
-#            result = result.decode(encoding='utf-8', errors='strict').split()
-#            print(' '.join(result))
-#            STOP = 'docker stop %s' % ' '.join(result)
-#            stdin, stdout, stderr = ssh.exec_command(STOP)
-#            result = stdout.read()
-#            if result:
-#                print("all nodes at %s stopped" % IP)
-#            elif not stderr:
-#                print(stderr)
-##            return True if result else False
-#        elif not stderr:
-#            print(stderr)
-#    except Exception as e:
-#        print('stopAll', e)
-#    ssh.close()
-#
-#def stopAllContainers(IPlist):
-#    threads = []
-#    for ip in IPlist._ips:
-#        print("stop all docker containers at %s" % ip._ip)
-#        t = threading.Thread(target=stopAll, args=(ip._ip,))
-#        threads.append(t)
-#        t.start()
-#    for t in threads:
-#        t.join()
 
-def shutdownServer(IPlist, username=USERNAME, password=PASSWD):
-    '''
-    shutdown all server on IPlist
-    note: should set param shell=True
-    '''
-    for ip in IPlist._ips:
-        my_cmd = 'echo %s | sshpass -p %s ssh -tt %s@%s sudo shutdown now' % (password, password, username, ip)
-        print("server %s poweroff" % ip._ip)
-        subprocess.run(my_cmd, stdout=subprocess.PIPE, shell=True)
+def shutdown_server(ip_list, username=USERNAME, password=PASSWD):
+    """
+    Shutdown all server on IPlist.
+    Note: Set param shell=True
+    """
+    for ip in ip_list.ips:
+        shutdown_command = 'echo %s | sshpass -p %s ssh -tt %s@%s sudo shutdown now' % (password, password, username, IP)
+        print("server %s shutdown" % ip.address)
+        subprocess.run(shutdown_command, stdout=subprocess.PIPE, shell=True)
+
+
+def set_ulimit(ip_list):
+    """Change ulimit value for servers."""
+    for ip in ip_list.ips:
+        subprocess.run(['sshpass -p %s scp setUlimit.sh %s@%s:' % (ip.password, ip.username, ip.address)],
+                       stdout=subprocess.PIPE, shell=True)
+        chmod_command = 'sshpass -p %s ssh -tt %s@%s chmod +x setUlimit.sh' % (ip.password, ip.username, ip.address)
+        exec_script_command = 'echo %s | sshpass -p %s ssh -tt %s@%s sudo ./setUlimit.sh' % (
+            ip.password, ip.password, ip.username, ip.address)
+        print('set nopro and nofile')
+        subprocess.run(chmod_command, stdout=subprocess.PIPE, shell=True)
+        subprocess.run(exec_script_command, stdout=subprocess.PIPE, shell=True)
+
+
+# def test(IPlist, username=USERNAME, password=PASSWD):
+#     for IP in IPlist.ips:
+#         subprocess.run('echo $HOME', shell=True)
+
 
 if __name__ == "__main__":
     f = IPList('ip.txt')
     for i in range(10):
-        print(f.getNewPort())
-    f.startDockerService()
+        print(f.get_new_port())
+    print("success")
+    f.stop_all_containers()
