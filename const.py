@@ -3,7 +3,7 @@
 
 import threading
 
-USERNAME = 'fzqa'  # username of servers
-PASSWD = '123150'  # password of servers
+USERNAME = 'ethtest'  # username of servers
+PASSWD = 'test'  # password of servers
 MAXPAYLOAD = 15  # maximum number of containers running on one server
 SEMAPHORE = threading.BoundedSemaphore(10)

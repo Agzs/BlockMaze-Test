@@ -73,9 +73,9 @@ class GethNode():
         url = "http://{}:{}".format(self.ip.address, self.rpc_port)
         SEMAPHORE.acquire()
         with requests.Session() as r:
-            response = r.post(url=url, data=data, headers=self._headers, timeout=120)
+            response = r.post(url=url, data=data, headers=self._headers)
             content = json.loads(response.content.decode(encoding='utf-8'))
-            print(content)
+            #print(content)
             result = content.get('result')
         SEMAPHORE.release()
         err = content.get('error')
@@ -128,15 +128,21 @@ class GethNode():
         method = 'eth_sendPublicTransaction'
         sleep(0.2)
         return self.rpc_call(method, params)
-    
-    # def send_mint_transaction(self, ffrom, value):
-    #     """eth.sendMintTransaction"""
-    #     if isinstance(value, int):  # if value is int, change it to hex str
-    #         value = hex(value)
-    #     params = [{"from" : ffrom , "value" : value}]
-    #     method = 'eth_sendMintTransaction'
-    #     sleep(0.2)
-    #     return self.rpc_call(method, params)
+
+    def send_batch_public_transaction(self, ffrom, to, value, numTx):
+        """eth.sendPublicTransaction()"""
+        for i in range(0, numTx):
+            self.send_public_transaction(ffrom, to, value)
+            sleep(0.2)
+        return numTx
+
+    # def send_batch_public_transaction(self, ffrom, to, value, numTx):
+    #     """eth.sendBatchTransactions({from:eth.accounts[0],to:"156669f9f391aa6a77c494ec6bd4a7761a6541b7",value:web3.toWei(0.05, "ether")}, 1)"""
+    #     if isinstance(numTx, int):  # if value is int, change it to hex str
+    #         numTx = hex(numTx)
+    #     CMD = ("docker exec -t %s /usr/bin/geth attach ipc://root/abc/geth.ipc --exec \"eth.sendBatchPublicTransaction({from:\\\"%s\\\",to:\\\"%s\\\",value:\\\"%s\\\"},\\\"%s\\\")\""%(self.name, ffrom, to, value, numTx))
+    #     print(CMD)
+    #     return exec_command(CMD, self.ip)
 
     def send_mint_transaction(self, ffrom, value):
         """eth.sendMintTransaction   ipc版本"""
@@ -158,7 +164,7 @@ class GethNode():
     def send_deposit_transaction(self, ffrom, txHash, key = "root"):
         """eth.sendDepositTransaction  ipc"""
         CMD = ("docker exec -t %s /usr/bin/geth attach ipc://root/abc/geth.ipc --exec \"eth.sendDepositTransaction({from:\\\"%s\\\",txHash:\\\"%s\\\",key:\\\"%s\\\"})\""%(self.name, ffrom, txHash, key))
-        print("CMD=",CMD)
+        #print("CMD=",CMD)
         return exec_command(CMD, self.ip)
 
     def send_redeem_transaction(self, ffrom, value):
@@ -170,7 +176,7 @@ class GethNode():
         """eth.getTransaction()"""
         method = 'eth_getTransactionByHash'
         params = [tran_hash]
-        print(params)
+        #print(params)
         return self.rpc_call(method, params)
 
     def get_accounts(self):

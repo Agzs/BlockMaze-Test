@@ -15,8 +15,13 @@ def generate_genesis(chain_id, accounts, config_file):
     genesis['config']['chainId'] = chain_id
 
     for acc in accounts:
-                                                                                    
+        i = 0
+        i = i + 1
+        if (i == 1 or i == 2):
+            genesis['alloc'][acc] = {'balance': "0x100000000000000000000000000000000000000000000000000000200000000"}
+            continue                                                       
         genesis['alloc'][acc] = {'balance': "0x000000000000000000000000000000000000000000000000000000200000000"} #添加余额 
+        
     #extra_data = '0x' + '0'*64 + ''.join(accounts) + '0' * 130
     #print("extra data in genesis file", extra_data)
     #genesis['extraData'] = extra_data

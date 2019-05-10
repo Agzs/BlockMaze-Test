@@ -80,6 +80,7 @@ class SingleChain():
 
         for index in range(self.node_count):
             self.accounts.append(self.nodes[index].accounts[0])
+        print('The corresponding accounts are as follows:')
         print(self.accounts)
 
     def set_genesis(config):
@@ -105,7 +106,7 @@ class SingleChain():
                         t.start()
                         threads.append(t)
                         print('copying genesis file')
-#                        node._ifSetGenesis = True
+                        #node._ifSetGenesis = True
                         time.sleep(0.1)
                 for t in threads:
                     t.join()
@@ -266,31 +267,55 @@ class SingleChain():
 
 if __name__ == "__main__":
     ip_list = IPList('ip.txt')
-    node_count = 3  #节点数量
+    node_count = 4  #节点数量
+    numTx = 100 #批量交易数量
     c = SingleChain('vnt', node_count,  121, ip_list)
     c.singlechain_start()
     c.config_consensus_chain()
     c.run_nodes()  #节点互联成功    
+    # 启动挖矿 账户1
     c.get_node_by_index(1).start_miner()
     time.sleep(10)
-    pubk = c.get_node_by_index(3).get_pubkeyrlp(str(c.get_node_by_index(3).get_accounts()[0])) 
-    mint_hash = c.get_node_by_index(2).send_mint_transaction(c.get_node_by_index(2).get_accounts()[0],"0x100")
-    mint_hash=mint_hash.split("\"")[1]
+
+    # 查询账户余额
+    # balance_acc2_before=c.get_node_by_index(2).get_balance(c.get_node_by_index(2).get_accounts()[0])
+    # print("account_2 balance before batch = ", balance_acc2_before)
+
+    # 产生批量交易 账户2
+    batch_hash=c.get_node_by_index(2).send_batch_public_transaction(c.get_node_by_index(2).get_accounts()[0], "0x34c09031d03b935c569def72ae8116357bda3169", "0x1000000000000000000000000000000000000000000000000000000000000", numTx)
+    time.sleep(1)
+    print("batch-num = ", batch_hash)
+    
+    # 查询交易数据
+    # time.sleep(50)
+    # c.get_node_by_index(2).get_transaction(public_hash)
+
+    # 获取收账人pk 账户
+    pubk = c.get_node_by_index(4).get_pubkeyrlp(str(c.get_node_by_index(4).get_accounts()[0])) 
+
+    # Mint操作
+    mint_hash = c.get_node_by_index(3).send_mint_transaction(c.get_node_by_index(3).get_accounts()[0],"0x100")
     print("mint-hash=",mint_hash)
-    time.sleep(1)     
-    send_hash = c.get_node_by_index(2).send_send_transaction(c.get_node_by_index(2).get_accounts()[0],"0x10",str(pubk))
+    mint_hash=mint_hash.split("\"")[1]
+    time.sleep(1)
+
+    # Send操作
+    send_hash = c.get_node_by_index(3).send_send_transaction(c.get_node_by_index(3).get_accounts()[0],"0x10",str(pubk))
+    print("send-hash",send_hash)
     send_hash=send_hash.split("\"")[1]
-    print("send-hash=",send_hash)
     time.sleep(20)
-    c.get_node_by_index(1).get_transaction(send_hash)
-    deposit_hash=c.get_node_by_index(3).send_deposit_transaction(c.get_node_by_index(3).get_accounts()[0],send_hash)
+
+    # Deposit操作
+    c.get_node_by_index(2).get_transaction(send_hash)
+    deposit_hash=c.get_node_by_index(4).send_deposit_transaction(c.get_node_by_index(4).get_accounts()[0],send_hash)
     print("deposit_hash",deposit_hash)
-    redeem_hash=c.get_node_by_index(2).send_redeem_transaction(c.get_node_by_index(2).get_accounts()[0],"0x10") 
+
+    # Redeem操作
+    redeem_hash=c.get_node_by_index(3).send_redeem_transaction(c.get_node_by_index(3).get_accounts()[0],"0x10") 
     print("redeem_hash",redeem_hash)
     time.sleep(10)
+
+    # 停止挖矿
     c.get_node_by_index(1).stop_miner()
     c.destruct_chain()
-    
-
-
-
+    print('success')
