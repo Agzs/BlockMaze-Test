@@ -1,0 +1,151 @@
+# 启动挖矿 账户1
+c.get_node_by_index(1).start_miner()
+time.sleep(10)
+
+# 查询账户余额
+# balance_acc2_before=c.get_node_by_index(2).get_balance(c.get_node_by_index(2).get_accounts()[0])
+# print("account_2 balance before batch = ", balance_acc2_before)
+
+# 产生批量交易 账户2
+batch_hash=c.get_node_by_index(2).send_batch_public_transaction(c.get_node_by_index(2).get_accounts()[0], "0x34c09031d03b935c569def72ae8116357bda3169", "0x1000000000000000000000000000000000000000000000000000000000000", numTx)
+time.sleep(1)
+print("batch-num = ", batch_hash)
+
+# 查询交易数据
+# time.sleep(50)
+# c.get_node_by_index(2).get_transaction(public_hash)
+
+# 获取收账人pk 账户
+pubk = c.get_node_by_index(4).get_pubkeyrlp(str(c.get_node_by_index(4).get_accounts()[0])) 
+
+# Mint操作
+mint_hash = c.get_node_by_index(3).send_mint_transaction(c.get_node_by_index(3).get_accounts()[0],"0x100")
+print("mint-hash=",mint_hash)
+mint_hash=mint_hash.split("\"")[1]
+time.sleep(1)
+
+# Send操作
+send_hash = c.get_node_by_index(3).send_send_transaction(c.get_node_by_index(3).get_accounts()[0],"0x10",str(pubk))
+print("send-hash",send_hash)
+send_hash=send_hash.split("\"")[1]
+time.sleep(20)
+
+# Deposit操作
+c.get_node_by_index(2).get_transaction(send_hash)
+deposit_hash=c.get_node_by_index(4).send_deposit_transaction(c.get_node_by_index(4).get_accounts()[0],send_hash)
+print("deposit_hash",deposit_hash)
+
+# Redeem操作
+redeem_hash=c.get_node_by_index(3).send_redeem_transaction(c.get_node_by_index(3).get_accounts()[0],"0x10") 
+print("redeem_hash",redeem_hash)
+time.sleep(10)
+
+# 停止挖矿
+c.get_node_by_index(1).stop_miner()
+
+# 停止container
+c.destruct_chain()
+print('success')
+
+
+
+
+# singlechain类中accounts列表中存放所有账户
+batch_hash=c.get_node_by_index(2).send_batch_public_transaction("0x"+c.accounts[1], "0x34c09031d03b935c569def72ae8116357bda3169", "0x1000000000000000000000000000000000000000000000000000000000000", numTx)
+mint_hash = c.get_node_by_index(3+i).send_mint_transaction("0x"+c.accounts[2+i],"0x100")
+
+
+
+# 多个mint
+# threads = []
+# mint_num = 4   # max is node_count - 2
+# t1=time.time()
+# for i in range(mint_num):
+#     t = MyThread(c.get_node_by_index(3+i).send_mint_transaction , args=("0x"+c.accounts[2+i],"0x100"))
+#     threads.append(t)
+# for t in threads:
+#     t.start()
+# for t in threads:
+#     t.join()
+# t2=time.time()
+# print("mint_time",t2-t1) #30s
+# # for t in threads:
+# #     print(t.get_result())
+
+# time.sleep(20)
+
+
+
+# 多个get_pubkeyrlp
+# threads = []
+# pk_num = 4   # max is node_count - 2
+# t1=time.time()
+# for i in range(pk_num):
+#     t = MyThread(c.get_node_by_index(3+i).get_pubkeyrlp , args=("0x"+c.accounts[2+i],"root"))
+#     threads.append(t)
+# for t in threads:
+#     t.start()
+# for t in threads:
+#     t.join()
+# t2=time.time()
+# print("time_pubkeyrlp",t2-t1)  #1s
+# pkrlp = []
+# for t in threads:
+#     pkrlp.append(t.get_result())
+# print(pkrlp)
+
+# time.sleep(20)
+
+# 多个send
+# threads = []
+# send_num = 4   # max is node_count - 2
+# t1=time.time()
+# for i in range(send_num):
+#     t = MyThread(c.get_node_by_index(3+i).send_send_transaction , args=("0x"+c.accounts[2+i], "0x10", pkrlp[pk_num-i-1]))
+#     threads.append(t)
+# for t in threads:
+#     t.start()
+# for t in threads:
+#     t.join()
+# t2=time.time()
+# print("send_time",t2-t1)  #50s
+# send_hash_list = []
+# for t in threads:
+#     send_hash_list.append(t.get_result().split("\"")[1])
+# print(send_hash_list)
+
+# time.sleep(20)
+
+# 多个deposit
+# threads = []
+# deposit_num = 4   # max is node_count - 2
+# t1=time.time()
+# for i in range(deposit_num):
+#     t = MyThread(c.get_node_by_index(3+i).send_deposit_transaction , args=("0x"+c.accounts[2+i], send_hash_list[pk_num-i-1],"root"))
+#     threads.append(t)
+# for t in threads:
+#     t.start()
+# for t in threads:
+#     t.join()
+# t2=time.time()
+# print("deposit_time",t2-t1)  #50s
+# deposit_hash_list = []
+# for t in threads:
+#     deposit_hash_list.append(t.get_result().split("\"")[1])
+# print(deposit_hash_list)
+
+# 多个redeem
+# threads = []
+# redeem_num = 4   # max is node_count - 2
+# t1=time.time()
+# for i in range(redeem_num):
+#     t = MyThread(c.get_node_by_index(3+i).send_redeem_transaction , args=("0x"+c.accounts[2+i],"0x10"))
+#     threads.append(t)
+# for t in threads:
+#     t.start()
+# for t in threads:
+#     t.join()
+# t2=time.time()
+# print("redeem_time",t2-t1) #30s
+
+#time.sleep(20)

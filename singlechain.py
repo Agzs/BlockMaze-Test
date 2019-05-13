@@ -9,6 +9,7 @@ from functools import wraps
 import time
 import subprocess
 import threading
+from resultthread import MyThread
 import re
 
 
@@ -264,15 +265,104 @@ class SingleChain():
             for t in threads:
                 t.join()
 
+# 批量发送交易
+def send_mul_mint(c , mint_num):
+    threads = []
+    # mint_num max is node_count - 2
+    t1=time.time()
+    for i in range(mint_num):
+        t = MyThread(c.get_node_by_index(3+i).send_mint_transaction , args=("0x"+c.accounts[2+i],"0x100"))
+        threads.append(t)
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    t2=time.time()
+    print("mint_time",t2-t1) #30s
+    return t2-t1
+
+def get_mul_pubkey(c , pk_num):
+    threads = []
+    # max is node_count - 2    pk_num= 参与send deposit节点数
+    t1=time.time()
+    for i in range(pk_num):
+        t = MyThread(c.get_node_by_index(3+i).get_pubkeyrlp , args=("0x"+c.accounts[2+i],"root"))
+        threads.append(t)
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    t2=time.time()
+    print("time_pubkeyrlp",t2-t1)  #1s
+    pkrlp = []
+    for t in threads:
+        pkrlp.append(t.get_result())
+    print(pkrlp)
+    return pkrlp
+
+def send_mul_send(c , send_num , pk_num , pkrlp):
+    threads = []
+    # max is node_count - 2    send_num = pk_num
+    t1=time.time()
+    for i in range(send_num):
+        t = MyThread(c.get_node_by_index(3+i).send_send_transaction , args=("0x"+c.accounts[2+i], "0x10", pkrlp[pk_num-i-1]))
+        threads.append(t)
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    t2=time.time()
+    print("send_time",t2-t1)  #50s
+    send_hash_list = []
+    for t in threads:
+        send_hash_list.append(t.get_result().split("\"")[1])
+    print(send_hash_list)
+    # send_hash_list.reverse()
+    return send_hash_list
+
+def send_mul_deposit(c , send_hash_list , deposit_num , pk_num):
+    threads = []
+    # max is node_count - 2
+    t1=time.time()
+    for i in range(deposit_num):
+        t = MyThread(c.get_node_by_index(3+i).send_deposit_transaction , args=("0x"+c.accounts[2+i], send_hash_list[pk_num-i-1],"root"))
+        threads.append(t)
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    t2=time.time()
+    print("deposit_time",t2-t1)  #80s
+    deposit_hash_list = []
+    for t in threads:
+        deposit_hash_list.append(t.get_result().split("\"")[1])
+    print(deposit_hash_list)
+    return deposit_hash_list
+
+def send_mul_redeem(c , redeem_num):
+    threads = []
+    redeem_num = 4   # max is node_count - 2
+    t1=time.time()
+    for i in range(redeem_num):
+        t = MyThread(c.get_node_by_index(3+i).send_redeem_transaction , args=("0x"+c.accounts[2+i],"0x10"))
+        threads.append(t)
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    t2=time.time()
+    print("redeem_time",t2-t1) #30s
+
 
 if __name__ == "__main__":
     ip_list = IPList('ip.txt')
-    node_count = 4  #节点数量
+    node_count = 6  #节点数量  偶数 不然设计时自己给自己send
     numTx = 100 #批量交易数量
     c = SingleChain('vnt', node_count,  121, ip_list)
     c.singlechain_start()
     c.config_consensus_chain()
-    c.run_nodes()  #节点互联成功    
+    c.run_nodes()  #节点互联成功 
+   
     # 启动挖矿 账户1
     c.get_node_by_index(1).start_miner()
     time.sleep(10)
@@ -282,40 +372,23 @@ if __name__ == "__main__":
     # print("account_2 balance before batch = ", balance_acc2_before)
 
     # 产生批量交易 账户2
-    batch_hash=c.get_node_by_index(2).send_batch_public_transaction(c.get_node_by_index(2).get_accounts()[0], "0x34c09031d03b935c569def72ae8116357bda3169", "0x1000000000000000000000000000000000000000000000000000000000000", numTx)
-    time.sleep(1)
-    print("batch-num = ", batch_hash)
-    
-    # 查询交易数据
-    # time.sleep(50)
-    # c.get_node_by_index(2).get_transaction(public_hash)
+    # batch_hash=c.get_node_by_index(2).send_batch_public_transaction("0x"+c.accounts[1], "0x34c09031d03b935c569def72ae8116357bda3169", "0x1000000000000000000000000000000000000000000000000000000000000", numTx)
+    # time.sleep(1)
+    # print("batch-num = ", batch_hash)
 
-    # 获取收账人pk 账户
-    pubk = c.get_node_by_index(4).get_pubkeyrlp(str(c.get_node_by_index(4).get_accounts()[0])) 
-
-    # Mint操作
-    mint_hash = c.get_node_by_index(3).send_mint_transaction(c.get_node_by_index(3).get_accounts()[0],"0x100")
-    print("mint-hash=",mint_hash)
-    mint_hash=mint_hash.split("\"")[1]
-    time.sleep(1)
-
-    # Send操作
-    send_hash = c.get_node_by_index(3).send_send_transaction(c.get_node_by_index(3).get_accounts()[0],"0x10",str(pubk))
-    print("send-hash",send_hash)
-    send_hash=send_hash.split("\"")[1]
+    send_mul_mint(c , 4)
     time.sleep(20)
-
-    # Deposit操作
-    c.get_node_by_index(2).get_transaction(send_hash)
-    deposit_hash=c.get_node_by_index(4).send_deposit_transaction(c.get_node_by_index(4).get_accounts()[0],send_hash)
-    print("deposit_hash",deposit_hash)
-
-    # Redeem操作
-    redeem_hash=c.get_node_by_index(3).send_redeem_transaction(c.get_node_by_index(3).get_accounts()[0],"0x10") 
-    print("redeem_hash",redeem_hash)
-    time.sleep(10)
+    pkrlp = get_mul_pubkey(c , 4)
+    time.sleep(20)
+    send_hash_list = send_mul_send(c , 4 , 4 , pkrlp)
+    time.sleep(20)
+    send_mul_deposit(c , send_hash_list , 4 , 4)
+    time.sleep(20)
+    send_mul_redeem(c , 4)
+    time.sleep(20)
 
     # 停止挖矿
     c.get_node_by_index(1).stop_miner()
+    # 停止container
     c.destruct_chain()
     print('success')
