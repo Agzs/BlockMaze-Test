@@ -6,25 +6,7 @@ import json
 from iplist import IPList
 from iplist import exec_command
 from const import USERNAME, PASSWD, SEMAPHORE
-from time import sleep
-
-
-# class GethNode0(object):
-#     """data structure for geth client running in a docker container"""
-#
-#     def __init__(self, userName=USERNAME, passWord=PASSWD):
-#         self.enode = ''
-#         self.ip, self.rpc_port, self.ethereum_network_port = IPlist.getNewPort()
-#         self.name = 'geth-pbft' + str(self.rpc_port)
-#         self._headers = {'Content-Type': 'application/json', 'Connection': 'close'}
-#         self._userName = USERNAME
-#         self.password = PASSWD
-#         self.accounts = []
-#         self._ifSetGenesis = False
-#
-#     def start(self):
-#         """start a container for geth client """
-#         pass
+from time import sleep,time
 
 
 class GethNode():
@@ -44,14 +26,16 @@ class GethNode():
 
     def start(self):
         """Start a container for geth on remote server and create a new account."""
-        # --ulimit nofile=<soft limit>:<hard limit> set the limit for open files  docker image name   rkdghd/gethzy
+        # --ulimit nofile=<soft limit>:<hard limit> set the limit for open files  docker image name   fzqa/gethzy
         docker_run_command = ('docker run --ulimit nofile=65535:65535 -td -p %d:8545 -p %d:30303 --rm --name %s '
-                              'rkdghd/gethzy:latest' % (self.rpc_port, self.ethereum_network_port, self.name))
+                              'fzqa/gethzy:6.6' % (self.rpc_port, self.ethereum_network_port, self.name))
         sleep(0.4)
         result = self.ip.exec_command(docker_run_command)
         if result:
             if result.startswith('docker: Error'):
+                print('error', self.ip.address)
                 raise RuntimeError('An error occurs while starting docker container. Container maybe already exists')
+
             print('container of node %s of blockchain %s at %s:%s started' % (self.node_index, self.blockchain_id,
                                                                               self.ip.address, self.rpc_port))
         new_account_command = 'docker exec -t %s geth --datadir abc account new --password passfile' % self.name  #passfile 在dockerimage里
@@ -120,39 +104,65 @@ class GethNode():
         params = [account, password, duration]
         return self.rpc_call(method, params)
 
-    def send_public_transaction(self, ffrom, to, value):
+    def send_public_transaction(self, ffrom, to, value , test_node):
         """eth.sendPublicTransaction()"""
         if isinstance(value, int):  # if value is int, change it to hex str
             value = hex(value)
-        params = [{"from": ffrom, "to": to, "value": value}]
+        params = [{"from": ffrom, "to": to, "value": value, "gasPrice":"0x0"}]  #0x1800000000
         method = 'eth_sendPublicTransaction'
-        sleep(0.2)
-        return self.rpc_call(method, params)
+        res = self.rpc_call(method, params)
+        t1 = time()
+        try:
+            t2 = test_transaction(test_node, res)
+        except:
+            t2 = t1
+        return res, t2 - t1
 
-    def send_batch_public_transaction(self, ffrom, to, value, numTx):
+    def send_batch_public_transaction(self, ffrom, to, value, numTx, test_node):
         """eth.sendPublicTransaction()"""
-        for i in range(0, numTx):
-            self.send_public_transaction(ffrom, to, value)
-            sleep(0.2)
-        return numTx
+        pub_con_time=[]
+        for i in range(numTx):
+            pub_hash,t_con=self.send_public_transaction(ffrom, to, value ,test_node)
+            pub_con_time.append(t_con)
+            # sleep(0.01)
+        return pub_con_time
 
-    # def send_batch_public_transaction(self, ffrom, to, value, numTx):
-    #     """eth.sendBatchTransactions({from:eth.accounts[0],to:"156669f9f391aa6a77c494ec6bd4a7761a6541b7",value:web3.toWei(0.05, "ether")}, 1)"""
-    #     if isinstance(numTx, int):  # if value is int, change it to hex str
-    #         numTx = hex(numTx)
-    #     CMD = ("docker exec -t %s /usr/bin/geth attach ipc://root/abc/geth.ipc --exec \"eth.sendBatchPublicTransaction({from:\\\"%s\\\",to:\\\"%s\\\",value:\\\"%s\\\"},\\\"%s\\\")\""%(self.name, ffrom, to, value, numTx))
-    #     print(CMD)
-    #     return exec_command(CMD, self.ip)
+    def send_batch_public_transaction_eth(self, ffrom, to, value, numTx ):
+        """eth.sendBatchTransactions({from:eth.accounts[0],to:"156669f9f391aa6a77c494ec6bd4a7761a6541b7",value:web3.toWei(0.05, "ether")}, 1)"""
+        if isinstance(numTx, int):  # if value is int, change it to hex str
+            numTx = hex(numTx)
+        CMD = ("docker exec -t %s /usr/bin/geth attach ipc://root/abc/geth.ipc --exec \"eth.sendBatchPublicTransaction({from:\\\"%s\\\",to:\\\"%s\\\",value:\\\"%s\\\"},\\\"%s\\\")\""%(self.name, ffrom, to, value, numTx))
+        print(CMD)
+        return exec_command(CMD, self.ip)
 
-    def send_mint_transaction(self, ffrom, value):
+    def send_mint_transaction(self, ffrom, value, test_node):
         """eth.sendMintTransaction   ipc版本"""
         CMD = ("docker exec -t %s /usr/bin/geth attach ipc://root/abc/geth.ipc --exec \"eth.sendMintTransaction({from:\\\"%s\\\",value:\\\"%s\\\"})\""%(self.name, ffrom, value))
-        return exec_command(CMD, self.ip)
+        mint_hash = exec_command(CMD, self.ip)
+        try:
+            mint_hash = mint_hash.split("\"")[1]
+            t1 = time()
+            t2 = test_transaction(test_node, mint_hash)
+        except:
+            mint_hash = "0x1"
+            t1 = 0
+            t2 = 0
+        return mint_hash, t2 - t1
 
-    def send_send_transaction(self, ffrom, value, pubkey):
+    def send_send_transaction(self, ffrom, value, pubkey, test_node):
         """eth.sendSendTransaction  ipc"""
         CMD = ("docker exec -t %s /usr/bin/geth attach ipc://root/abc/geth.ipc --exec \"eth.sendSendTransaction({from:\\\"%s\\\",value:\\\"%s\\\",pubKey:\\\"%s\\\"})\""%(self.name, ffrom, value, pubkey))
-        return exec_command(CMD, self.ip)
+        send_hash = exec_command(CMD, self.ip)
+        try:
+            send_hash = send_hash.split("\"")[1]
+            print("send_hash" , send_hash)
+            t1 = time()
+            t2 = test_transaction(test_node, send_hash)
+        except:
+            send_hash = "0x1"
+            t1 = 0
+            t2 = 0
+        return send_hash, t2 - t1
 
     def get_pubkeyrlp(self, addr, pwd="root"):
         """eth.getPubKeyRLP("0xeac93e13065db05706d7b60e29be532f350a3078","root") """
@@ -161,16 +171,34 @@ class GethNode():
         sleep(0.2)
         return self.rpc_call(method, params)
 
-    def send_deposit_transaction(self, ffrom, txHash, key = "root"):
+    def send_deposit_transaction(self, ffrom, txHash, test_node, key = "root"):
         """eth.sendDepositTransaction  ipc"""
         CMD = ("docker exec -t %s /usr/bin/geth attach ipc://root/abc/geth.ipc --exec \"eth.sendDepositTransaction({from:\\\"%s\\\",txHash:\\\"%s\\\",key:\\\"%s\\\"})\""%(self.name, ffrom, txHash, key))
-        #print("CMD=",CMD)
-        return exec_command(CMD, self.ip)
+        deposit_hash = exec_command(CMD, self.ip)
+        try:
+            deposit_hash = deposit_hash.split("\"")[1]
+            print("deposit_hash", deposit_hash)
+            t1 = time()
+            t2 = test_transaction(test_node, deposit_hash)
+        except:
+            deposit_hash = "0x1"
+            t1 = 0
+            t2 = 0
+        return deposit_hash, t2 - t1
 
-    def send_redeem_transaction(self, ffrom, value):
+    def send_redeem_transaction(self, ffrom, value, test_node):
         """eth.sendRedeemTransaction  ipc"""
         CMD = ("docker exec -t %s /usr/bin/geth attach ipc://root/abc/geth.ipc --exec \"eth.sendRedeemTransaction({from:\\\"%s\\\",value:\\\"%s\\\"})\""%(self.name, ffrom, value))
-        return exec_command(CMD, self.ip)
+        redeem_hash = exec_command(CMD, self.ip)
+        try:
+            redeem_hash = redeem_hash.split("\"")[1]
+            t1 = time()
+            t2 = test_transaction(test_node, redeem_hash)
+        except:
+            redeem_hash = "0x1"
+            t1 = 0
+            t2 = 0
+        return redeem_hash, t2 - t1
 
     def get_transaction(self, tran_hash):
         """eth.getTransaction()"""
@@ -199,6 +227,11 @@ class GethNode():
         result = self.rpc_call(method, params)
         return int(result, 16) if result else 0  # change hex number to dec
 
+    def get_blocknum(self):
+        method = 'eth_blockNumber'
+        result = self.rpc_call(method)
+        return int(result, 16) if result else 0
+
     def add_peer(self, *args):
         """admin.addPeer()"""
         method = 'admin_addPeer'
@@ -206,21 +239,6 @@ class GethNode():
         # sleep(0.02)
         result = self.rpc_call(method, params)
         return result
-
-#    def addPeer(self, *args, **kwargs):
-#        """IPC version"""
-#        try:
-#            CMD = ("docker exec -t %s geth attach ipc://root/abc/geth.ipc "
-#                   "--exec \"admin.addPeer%s\"" %(self.name, args))
-#            self.ip.exec_command(CMD)
-#            sleep(1)
-#        except Exception as e:
-#            if self._exception is False:
-#                self._exception = True
-#                self.ip.exec_command(CMD)
-#                sleep(1)
-#            else:
-#                raise RuntimeError('%s:%s %s %s' % (self.ip, self.ethereum_network_port, self.rpc_port, e))
 
     def set_enode(self):
         """Set enode info of a node."""
@@ -281,6 +299,20 @@ class GethNode():
         self.ip.exec_command(stop_command)
         print('node %s of blockchain %s at %s:%s stopped' % (self.node_index, self.blockchain_id, self.ip.address, self.rpc_port))
 
+
+def test_transaction(node, tran):
+    t_b = time()
+    while True:
+        # if node.get_transaction(tran) != "":
+        if node.get_transaction(tran) != None:
+            # print(node.get_transaction(tran))
+            tran_info = node.get_transaction(tran)
+            if tran_info['blockNumber'] !=  None:
+                return time()
+        t_e=time()
+        if t_e-t_b > 500:
+            return 0
+        sleep(0.5)
 
 if __name__ == "__main__":
     IPlist = IPList('ip.txt')

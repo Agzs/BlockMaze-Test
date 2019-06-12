@@ -63,13 +63,13 @@ newgrp - docker
 3、通过Dockerfile生成镜像（不需要做）
 ```
 进入Dockerfile所在目录
-docker build -t rkdghd/gethzy:latest .   在本地生成镜像
-docker push rkdghd/gethzy:latest    上传到官方仓库 需注册帐号
+docker build -t fzqa/gethzy:latest .   在本地生成镜像
+docker push fzqa/gethzy:latest    上传到官方仓库 需注册帐号
 ```
 
 4、获取docker  vnttest 镜像
 ```
-docker pull rkdghd/gethzy:latest
+docker pull fzqa/gethzy:latest
 
 docker配置结束   
 docker images  查看镜像

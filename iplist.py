@@ -94,6 +94,17 @@ class IP(object):
         print("all nodes at %s stopped" % self.address)
         print('-----------')
 
+    def remove_containers(self):
+        """Remove all containers on the server."""
+        get_names_command = "docker ps -a --format '{{.Names}}'"
+        result = self.exec_command(get_names_command).split()
+        print('-----------')
+        print(' '.join(result))
+        stop_all_containers_command = 'docker rm %s' % ' '.join(result)
+        self.exec_command(stop_all_containers_command)
+        print("all nodes at %s removed" % self.address)
+        print('-----------')
+
     def reboot_server(self):
         """Reboot remote server with SSH connection."""
         ssh_reboot_command = 'echo %s | sshpass -p %s ssh -tt %s@%s sudo reboot' % (
@@ -109,18 +120,68 @@ class IP(object):
         time.sleep(0.02)
         subprocess.run(ssh_shutdown_command, stdout=subprocess.PIPE, shell=True)
 
+    def restart_server(self):
+        """Shutdown remote server with SSH connection."""
+        ssh_shutdown_command = 'echo %s | sshpass -p %s ssh -tt %s@%s sudo shutdown -r now' % (
+            self.password, self.password, self.username, self.address)
+        print("server %s shutdown" % self.address)
+        time.sleep(0.02)
+        subprocess.run(ssh_shutdown_command, stdout=subprocess.PIPE, shell=True)
+
+
+    def docker_pull(self):
+        # pull images  
+        pull_command = 'echo %s | sshpass -p %s ssh -tt %s@%s  docker pull fzqa/gethzy:6.6' % (
+        self.password, self.password, self.username, self.address)
+        print("server %s docker pull" % self.address)
+        res = subprocess.run(pull_command, stdout=subprocess.PIPE, shell=True)
+        print(res , self.address)
+    
+    def docker_rmi(self):
+        # rmi images
+        pull_command = 'echo %s | sshpass -p %s ssh -tt %s@%s  docker rmi fzqa/gethzy:6.3' % (
+        self.password, self.password, self.username, self.address)
+        print("server %s docker rmi" % self.address)
+        subprocess.run(pull_command, stdout=subprocess.PIPE, shell=True)
+
+    def mirror(self):
+        mirror_cmd = 'sshpass -p %s scp daemon.json %s@%s:daemon.json' % (
+            self.password, self.username, self.address)
+        time.sleep(0.02)
+        subprocess.run(mirror_cmd, stdout=subprocess.PIPE, shell=True)
+        cp_cmd = 'echo %s | sshpass -p %s ssh -tt %s@%s sudo cp daemon.json /etc/docker/daemon.json' % (
+            self.password, self.password, self.username, self.address)
+        subprocess.run(cp_cmd, stdout=subprocess.PIPE, shell=True)
+        time.sleep(0.02)
+        restart_docker_cmd = 'echo %s | sshpass -p %s ssh -tt %s@%s sudo service docker restart' % (
+            self.password, self.password, self.username, self.address)
+        for i in range(3):
+            subprocess.run(restart_docker_cmd, stdout=subprocess.PIPE, shell=True)
+            time.sleep(3)
+
+    def time_same(self):
+        # error
+        ts_command = 'echo %s | sshpass -p %s ssh -tt %s@%s  sudo apt install ntpdate --fix-missing' % (
+            self.password, self.password, self.username, self.address)
+        print(subprocess.run(ts_command, stdout=subprocess.PIPE, shell=True))
+        time.sleep(3)
+        tss_command = 'echo %s | sshpass -p %s ssh -tt %s@%s  sudo ntpdate 0.asia.pool.ntp.org' % (
+            self.password, self.password, self.username, self.address)
+        print(subprocess.run(tss_command, stdout=subprocess.PIPE, shell=True))
+
+
 
 class IPList(object):
     """Manage IPs and ports of all servers involved. 处理所有的客户端  ip以及端口   一个ip会有多个客户端"""
 
     def __init__(self, ip_file, current_ip=0, username=USERNAME, password=PASSWD):
         """Read IPs from a file."""
-        self.current_ip = current_ip #现在的ip使用数量 表示目前是第几个  下标使用
+        self.current_ip = current_ip 
         self.ips = []
-        with open(ip_file, 'r') as f: #从ipFile中读取ip
+        with open(ip_file, 'r') as f: 
             for line in f.readlines():
                 if line.strip():
-                    self.ips.append(IP(line.strip())) #创建IP实例，存放在_ips[]中
+                    self.ips.append(IP(line.strip())) 
                 else:
                     break
         self._init_service()
@@ -138,11 +199,11 @@ class IPList(object):
         Get a new rpc_port and a new ethereum_network_port along with the IP addr of a server.
         Return: (ip_address, rpc_port, ethereum_network_port)
         """
-        if self.current_ip >= len(self.ips):  #判断现在使用的IP数量
+        if self.current_ip >= len(self.ips): 
             raise ValueError("server overload")
-        rpc_port, ethereum_network_port = self.ips[self.current_ip].get_new_port() #调用子类IP的getNewPort()
+        rpc_port, ethereum_network_port = self.ips[self.current_ip].get_new_port() 
         current_ip = self.ips[self.current_ip]
-        if current_ip.is_full_loaded(): #判断该ip上客户端数量是否超载  超载使用新ip
+        if current_ip.is_full_loaded():
             self.current_ip += 1
         return current_ip, rpc_port, ethereum_network_port
 
@@ -157,11 +218,7 @@ class IPList(object):
             t.start()
             threads.append(t)
         for t in threads:
-            t.join()
-
-    #        for IP in self.ips:
-    #            print(IP)
-    #            ip.exec_command("docker stop $(docker ps --format '{{.Names}}')")
+            t.join() 
 
     def _init_service(self):
         """
@@ -227,6 +284,63 @@ class IPList(object):
         for t in threads:
             t.join()
 
+    def restart_servers(self):
+        threads = []
+        for ip in self.ips:
+            t = threading.Thread(target=ip.restart_server)
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+
+    def docker_pulls(self):
+        threads = []
+        for ip in self.ips:
+            t = threading.Thread(target=ip.docker_pull)
+            t.start()
+            threads.append(t)
+            time.sleep(0.1)
+        for t in threads:
+            t.join()
+
+    def docker_rmis(self):
+        threads = []
+        for ip in self.ips:
+            t = threading.Thread(target=ip.docker_rmi)
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+
+    def remove_all_containers(self):
+        """Remove all containers running on the servers."""
+        threads = []
+        for ip in self.ips:
+            t = threading.Thread(target=ip.remove_containers)
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+
+    def mirrors(self) -> None:
+        threads = []
+        for ip in self.ips:
+            t = threading.Thread(target=ip.mirror)
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+
+    def time_sames(self):
+        threads = []
+        for ip in self.ips:
+            t = threading.Thread(target=ip.time_same)
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+
+
 
 def exec_command(cmd, ip_address, port=22, username=USERNAME, password=PASSWD):
     """Exec a command on remote server using SSH connection."""
@@ -276,7 +390,10 @@ def set_ulimit(ip_list):
 
 if __name__ == "__main__":
     f = IPList('ip.txt')
-    for i in range(10):
-        print(f.get_new_port())
+    # for i in range(10):
+    #     print(f.get_new_port())
     print("success")
     f.stop_all_containers()
+    f.remove_all_containers()
+
+    

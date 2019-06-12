@@ -1,39 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from const import USERNAME, PASSWD, SEMAPHORE
+from const import USERNAME, PASSWD, SEMAPHORE, MAXPAYLOAD, NODE_COUNT, PUB_COUNT, MINER_COUNT
 from gethnode import GethNode
 from iplist import IPList
-from conf import generate_genesis
+from conf import generate_genesis_poa,generate_genesis_pow
 from functools import wraps
 import time
 import subprocess
 import threading
 from resultthread import MyThread
-import re
+import shutil
 
-
-# class SetGenesis():
-#     """Decorator. Set genesis.json file for a chain."""
-#     def __init__(self, func):
-#         self.func = func
-#     def __call__(self, *args):
-#         pass
-#     def __repr__(self):
-#         """Return the function's docstring."""
-#         return self.func.__doc__
-#     def __get__(self, obj, objtype):
-#         """Support instance methods."""
-#         return functools.partial(self.__call__, obj)
-
-
-# def add_peer(node1: GethNode, node2: GethNode, label: int):
-#     # Use semaphore to limit number of concurrent threads
-#     SEMAPHORE.acquire()
-#     node1.add_peer(node2.get_enode(), label)
-#     # time.sleep(0.5)
-#     SEMAPHORE.release()
-#     # print(threading.active_count())
 
 
 class SingleChain():
@@ -80,6 +58,7 @@ class SingleChain():
             t.join()
 
         for index in range(self.node_count):
+            print(index,self.nodes[index].accounts[0])
             self.accounts.append(self.nodes[index].accounts[0])
         print('The corresponding accounts are as follows:')
         print(self.accounts)
@@ -121,7 +100,7 @@ class SingleChain():
             self.config_file = '0.json'
         else:
             self.config_file = '%s.json' % self.chain_id
-        generate_genesis(self.blockchain_id, self.accounts, self.config_file)
+        generate_genesis_pow(self.blockchain_id, self.accounts, self.config_file)
         time.sleep(0.02)
 
     @set_genesis
@@ -159,16 +138,21 @@ class SingleChain():
 
     def run_geth_nodes(self):
         threads = []
-        for node in self.nodes:
-            start_geth_command = ('geth --datadir abc --networkid 55661 --cache 512 --port 30303 --rpcport 8545 --rpcapi '
-                   'admin,eth,miner,web3,net,personal,txpool --rpc --rpcaddr \"0.0.0.0\" '
-                   '--unlock %s --password \"passfile\" --maxpeers 4096 --maxpendpeers 4096 --syncmode \"full\" --nodiscover') % (node.accounts[0])
-            command = 'docker exec -td %s %s' % (node.name, start_geth_command) #主机内执行的完整命令
-            # print(start_geth_command)
-            t = threading.Thread(target=node.ip.exec_command, args=(command,))  #通过ip执行
+        for i,node in enumerate(self.nodes):
+            if i in list(range(0, MINER_COUNT * MAXPAYLOAD, MAXPAYLOAD)):
+                print("full", node.ip , node.rpc_port)
+                start_geth_command = ('geth --datadir abc --networkid 55661 --cache 2048 --port 30303 --rpcport 8545 --rpcapi '
+                       'admin,eth,miner,web3,net,personal,txpool --rpc --rpcaddr 0.0.0.0 '
+                       '--unlock %s --password passfile --gasprice 0 --maxpeers 4096 --maxpendpeers 4096 --syncmode full --nodiscover 2>>%s.log') % (node.accounts[0], node.name)
+            else:
+                start_geth_command = ('geth --datadir abc --networkid 55661 --cache 2048 --port 30303 --rpcport 8545 --rpcapi '
+                                     'admin,eth,miner,web3,net,personal,txpool --rpc --rpcaddr 0.0.0.0 '
+                                     '--unlock %s --password passfile --gasprice 0 --maxpeers 4096 --maxpendpeers 4096 --syncmode fast --nodiscover 2>>%s.log') % (node.accounts[0], node.name)
+            command = 'docker exec -d %s bash -c \"%s\" ' % (node.name, start_geth_command) 
+            t = threading.Thread(target=node.ip.exec_command, args=(command,))  
             t.start()
             threads.append(t)
-            time.sleep(0.5)
+            time.sleep(0.1)
         for t in threads:
             t.join()
         print('node starting')
@@ -179,7 +163,7 @@ class SingleChain():
         print()
         threads = []
         for node in self.nodes:
-            t = threading.Thread(target=node.set_enode) #设置client的 enode信息
+            t = threading.Thread(target=node.set_enode) 
             t.start()
             threads.append(t)
         for t in threads:
@@ -213,24 +197,17 @@ class SingleChain():
 
             # connect nodes in a single chain with each other
             for i in range(node_count):
-                # for j in range(node_count):
-                for j in range(i+1, node_count):
-                    # add_peer(self.nodes[i], self.nodes[j], 0)  ### limit number of concurrent threads
-
-                    # tmpEnode = self.nodes[j].getEnode()
-                    # self.nodes[i].add_peer(tmpEnode, 0) #########
-                    # t1 = threading.Thread(target=add_peer, args=(self.nodes[i], self.nodes[j], 0))
+                if i in list(range(0, MINER_COUNT * MAXPAYLOAD, MAXPAYLOAD)):
+                    num = 1
+                else:
+                    num = 20
+                for j in range(i+1, node_count, num):
                     print("______________________addpeer______________________")
                     t1 = threading.Thread(target=self.nodes[i].add_peer, args=(self.nodes[j].get_enode(),))
                     t1.start()
-                    time.sleep(0.05)    # if fail. add this line.
-                    # t2 = threading.Thread(target=add_peer, args=(self.nodes[j], self.nodes[i], 0))
-                    # t2.start()
-                    # time.sleep(0.1)    # O(n)
+                    time.sleep(0.01)    # if fail. add this line.
                     threads.append(t1)
-                    # threads.append(t2)
-                    # time.sleep(0.3)
-                break
+                # break
             for t in threads:
                 t.join()
             print('active threads:', threading.active_count())
@@ -265,28 +242,81 @@ class SingleChain():
             for t in threads:
                 t.join()
 
-# 批量发送交易
-def send_mul_mint(c , mint_num):
+#批量普通交易
+def send_mul_pub(pub_nodes , pub_accounts , numTx,test_node):
     threads = []
-    # mint_num max is node_count - 2
-    t1=time.time()
-    for i in range(mint_num):
-        t = MyThread(c.get_node_by_index(3+i).send_mint_transaction , args=("0x"+c.accounts[2+i],"0x100"))
+    for i in range(PUB_COUNT):
+        t = MyThread(pub_nodes[i].send_batch_public_transaction, args=(pub_accounts[i], "0x9d59d8f0092a391caacdebbc3e944ea200e2b41b","0x1000000000000000000000000000000000000", numTx//PUB_COUNT,test_node[i%query_num]))
         threads.append(t)
     for t in threads:
         t.start()
     for t in threads:
         t.join()
-    t2=time.time()
-    print("mint_time",t2-t1) #30s
-    return t2-t1
+    for t in threads:
+        t_consen = t.get_result()
+        pub_tran_time.extend(t_consen)
+    print(pub_tran_time)
+    return pub_tran_time
 
-def get_mul_pubkey(c , pk_num):
+def send_mul_pub_eth(pub_nodes , pub_accounts , numTx):
+    '''用于后台发送交易'''
     threads = []
-    # max is node_count - 2    pk_num= 参与send deposit节点数
+    for i in range(PUB_COUNT):
+        t = MyThread(pub_nodes[i].send_batch_public_transaction_eth, args=(pub_accounts[i], "0x9d59d8f0092a391caacdebbc3e944ea200e2b41b","0x100000000000000000000000000000", numTx//PUB_COUNT))
+        threads.append(t)
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+
+
+def fn_back_1(pub_nodes , pub_accounts, nums = 200 ):
+    send_mul_pub_eth(pub_nodes , pub_accounts , nums)  # 难度值 1000000
+    threading.Timer(1 , fn_back_1, args=(pub_nodes, pub_accounts)).start()
+
+# def fn_back_2(pub_nodes , pub_accounts ,test_node , nums = 200):
+#     send_mul_pub(pub_nodes , pub_accounts , nums , test_node)  # 难度值 1000000
+#     threading.Timer(0 , fn_back_2, args=(pub_nodes, pub_accounts,test_node )).start()
+
+# 批量发送mint交易
+def send_mul_mint(mint_num , nodes , accos , pub_nodes , pub_accounts , numTx , test_node):
+    mint_tran_time = []
+    pub_time = []
+    threads = []
+    t1=time.time()
+    for i in range(mint_num):
+        t = MyThread(nodes[i].send_mint_transaction , args=(accos[i],"0x1000",test_node[i%query_num]))
+        threads.append(t)
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    t2 = time.time()
+    if numTx != 0:
+        send_mul_pub_eth(pub_nodes, pub_accounts, numTx)
+    print("mint_time",t2-t1)
+    mint_hash_list = []
+    for t in threads:
+        try:
+            mint_hash, t_consen = t.get_result()
+        except:
+            mint_hash="0x1"
+            t_consen=0
+        mint_hash_list.append(mint_hash)
+        mint_tran_time.append(t_consen)
+    print(mint_hash_list)
+    print(mint_tran_time)
+    mint_tran_time.sort()
+    pub_time.sort()
+    return t2-t1, pub_time, mint_tran_time
+
+def get_mul_pubkey(pk_num , nodes , accos):
+    """可用于测试节点是否工作 ， 除去不工作的节点"""
+    threads = []
     t1=time.time()
     for i in range(pk_num):
-        t = MyThread(c.get_node_by_index(3+i).get_pubkeyrlp , args=("0x"+c.accounts[2+i],"root"))
+        t = MyThread(nodes[i].get_pubkeyrlp , args=(accos[i] , "root"))
         threads.append(t)
     for t in threads:
         t.start()
@@ -295,100 +325,169 @@ def get_mul_pubkey(c , pk_num):
     t2=time.time()
     print("time_pubkeyrlp",t2-t1)  #1s
     pkrlp = []
-    for t in threads:
-        pkrlp.append(t.get_result())
+    for i,t in enumerate(threads):
+        if(t.get_result() == None):
+            nodes.remove(nodes[i])
+            accos.remove(accos[i])
+        elif(t.get_result().startswith("0x")):
+            pkrlp.append(t.get_result())
+        else:
+            nodes.remove(nodes[i])
     print(pkrlp)
     return pkrlp
 
-def send_mul_send(c , send_num , pk_num , pkrlp):
+def send_mul_send(send_num , pk_num , pkrlp , nodes , accos, pub_nodes , pub_accounts , numTx , test_node):
+    send_tran_time = []
+    pub_time = []
     threads = []
-    # max is node_count - 2    send_num = pk_num
     t1=time.time()
     for i in range(send_num):
-        t = MyThread(c.get_node_by_index(3+i).send_send_transaction , args=("0x"+c.accounts[2+i], "0x10", pkrlp[pk_num-i-1]))
+        t = MyThread(nodes[i].send_send_transaction , args=(accos[i], "0x10", pkrlp[pk_num-i-1],test_node[i%query_num]))
         threads.append(t)
     for t in threads:
         t.start()
     for t in threads:
         t.join()
     t2=time.time()
-    print("send_time",t2-t1)  #50s
+    if numTx != 0:
+        send_mul_pub_eth(pub_nodes, pub_accounts, numTx)
+    print("send_time",t2-t1) 
     send_hash_list = []
     for t in threads:
-        send_hash_list.append(t.get_result().split("\"")[1])
+        try:
+            send_hash, t_consen = t.get_result()
+        except:
+            send_hash="0x1"
+            t_consen=0
+        send_hash_list.append(send_hash)
+        send_tran_time.append(t_consen)
     print(send_hash_list)
-    # send_hash_list.reverse()
-    return send_hash_list
+    print(send_tran_time)
+    send_tran_time.sort()
+    pub_time.sort()
+    return send_hash_list,pub_time,send_tran_time
 
-def send_mul_deposit(c , send_hash_list , deposit_num , pk_num):
+def send_mul_deposit(send_hash_list , deposit_num , pk_num , nodes , accos , pub_nodes , pub_accounts , numTx , test_node):
+    deposit_tran_time = []
+    pub_time = []
     threads = []
-    # max is node_count - 2
     t1=time.time()
     for i in range(deposit_num):
-        t = MyThread(c.get_node_by_index(3+i).send_deposit_transaction , args=("0x"+c.accounts[2+i], send_hash_list[pk_num-i-1],"root"))
+        t = MyThread(nodes[i].send_deposit_transaction , args=(accos[i], send_hash_list[pk_num-i-1],test_node[i%query_num]))
         threads.append(t)
     for t in threads:
         t.start()
     for t in threads:
         t.join()
     t2=time.time()
+    if numTx != 0:
+        # pub_time = send_mul_pub(pub_nodes, pub_accounts, numTx,test_node)
+        send_mul_pub_eth(pub_nodes, pub_accounts, numTx)
     print("deposit_time",t2-t1)  #80s
     deposit_hash_list = []
     for t in threads:
-        deposit_hash_list.append(t.get_result().split("\"")[1])
+        try:
+            deposit_hash, t_consen = t.get_result()
+        except:
+            deposit_hash="0x1"
+            t_consen=0
+        deposit_hash_list.append(deposit_hash)
+        deposit_tran_time.append(t_consen)
     print(deposit_hash_list)
-    return deposit_hash_list
+    print(deposit_tran_time)
+    deposit_tran_time.sort()
+    pub_time.sort()
+    return t2-t1,pub_time,deposit_tran_time
 
-def send_mul_redeem(c , redeem_num):
+def send_mul_redeem(redeem_num , nodes , accos ,pub_nodes , pub_accounts , numTx , test_node):
+    redeem_tran_time = []
+    pub_time = []
     threads = []
-    redeem_num = 4   # max is node_count - 2
     t1=time.time()
     for i in range(redeem_num):
-        t = MyThread(c.get_node_by_index(3+i).send_redeem_transaction , args=("0x"+c.accounts[2+i],"0x10"))
+        t = MyThread(nodes[i].send_redeem_transaction , args=(accos[i] , "0x10",test_node[i%query_num]))
         threads.append(t)
     for t in threads:
         t.start()
     for t in threads:
         t.join()
     t2=time.time()
-    print("redeem_time",t2-t1) #30s
+    if numTx != 0:
+        # pub_time = send_mul_pub(pub_nodes, pub_accounts, numTx,test_node)
+        send_mul_pub_eth(pub_nodes, pub_accounts, numTx)
+    print("redeem_time", t2 - t1)  # 30s
+    redeem_hash_list = []
+    for t in threads:
+        try:
+            redeem_hash, t_consen = t.get_result()
+        except:
+            redeem_hash="0x1"
+            t_consen=0
+        redeem_hash_list.append(redeem_hash)
+        redeem_tran_time.append(t_consen)
+    print(redeem_hash_list)
+    print(redeem_tran_time)
+    redeem_tran_time.sort()
+    pub_time.sort()
+    return t2-t1,pub_time,redeem_tran_time
 
+def mul_miner_start( nodes ):
+    threads = []
+    for i in range(len(nodes)):
+        t = threading.Thread(nodes[i].start_miner())
+        threads.append(t)
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+
+query_num = 10
+
+pub_tran_time = []
 
 if __name__ == "__main__":
-    ip_list = IPList('ip.txt')
-    node_count = 6  #节点数量  偶数 不然设计时自己给自己send
-    numTx = 100 #批量交易数量
-    c = SingleChain('vnt', node_count,  121, ip_list)
-    c.singlechain_start()
-    c.config_consensus_chain()
-    c.run_nodes()  #节点互联成功 
-   
-    # 启动挖矿 账户1
-    c.get_node_by_index(1).start_miner()
-    time.sleep(10)
+    f = IPList('ip.txt')
+    print("success")
+    f.stop_all_containers()
+    time.sleep(1)
+    f.remove_all_containers() 
 
-    # 查询账户余额
-    # balance_acc2_before=c.get_node_by_index(2).get_balance(c.get_node_by_index(2).get_accounts()[0])
-    # print("account_2 balance before batch = ", balance_acc2_before)
+    shutil.copyfile("vnt-pow.json","vnt.json")  
+    ip_list = IPList('ip.txt') 
+    print("ip_nums=",len(ip_list.ips))
+    
+    c = SingleChain('vnt', NODE_COUNT,  121, ip_list)
+    c.singlechain_start() 
+    c.config_consensus_chain() 
+    c.run_nodes()  
 
-    # 产生批量交易 账户2
-    # batch_hash=c.get_node_by_index(2).send_batch_public_transaction("0x"+c.accounts[1], "0x34c09031d03b935c569def72ae8116357bda3169", "0x1000000000000000000000000000000000000000000000000000000000000", numTx)
-    # time.sleep(1)
-    # print("batch-num = ", batch_hash)
+    miner_nums = MINER_COUNT  
+    miner_nodes = [] 
+    for i in range(miner_nums):
+        miner_nodes.append(c.nodes[ i * MAXPAYLOAD])
+    miner_accounts = [i.get_accounts()[0] for i in miner_nodes]
 
-    send_mul_mint(c , 4)
-    time.sleep(20)
-    pkrlp = get_mul_pubkey(c , 4)
-    time.sleep(20)
-    send_hash_list = send_mul_send(c , 4 , 4 , pkrlp)
-    time.sleep(20)
-    send_mul_deposit(c , send_hash_list , 4 , 4)
-    time.sleep(20)
-    send_mul_redeem(c , 4)
-    time.sleep(20)
+    pub_nums = PUB_COUNT 
+    pub_nodes = [] 
+    for i in range(pub_nums):
+        pub_nodes.append(c.nodes[1 + i * MAXPAYLOAD])
+    pub_accounts = [] 
+    for i in pub_nodes:
+        pub_accounts.append(i.get_accounts()[0])
 
-    # 停止挖矿
-    c.get_node_by_index(1).stop_miner()
-    # 停止container
-    c.destruct_chain()
+
+    send_nums = NODE_COUNT - miner_nums - pub_nums  
+    send_nodes = [i for i in c.nodes if i not in miner_nodes and i not in pub_nodes] 
+    send_accounts = []
+    for i in send_nodes:
+        send_accounts.append(i.get_accounts()[0])
+    
+    print("pub",pub_accounts)
+    print("send",send_accounts)
+
+    for i in miner_nodes:
+        i.start_miner()
+
+    time.sleep(100)
     print('success')
