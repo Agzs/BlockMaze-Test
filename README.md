@@ -34,7 +34,7 @@ ln -s /usr/local/python3/bin/pip3.7 /usr/bin/pip3
 #### 安装环境依赖
 
 ```
-sudo pip3 install prequests aramiko
+sudo pip3 install requests paramiko
 sudo apt-get install openssh-server sshpass
 ```
 安装问题参考[error](https://blog.csdn.net/zxd675816777/article/details/39119767)
